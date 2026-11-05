@@ -3,6 +3,10 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    // Monaco + Markdown make the bundle ~530 kB; that's expected for this app
+    chunkSizeWarningLimit: 1000,
+  },
   server: {
     proxy: {
       '/api': {

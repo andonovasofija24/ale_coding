@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy import String, Text, Integer, ForeignKey, DateTime, Enum, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.database import Base
 
@@ -18,6 +18,11 @@ class Session(Base):
     current_code: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # Several solutions of one task: this is solution number `solution_no`, following `approach` ("" = the
+    # first, free one); when it is finished, `alternatives` lists other ways to solve the task ([{title, idea}]).
+    solution_no: Mapped[int] = mapped_column(Integer, default=1)
+    approach: Mapped[str] = mapped_column(Text, default="")
+    alternatives: Mapped[list] = mapped_column(JSONB, default=list)
 
     steps: Mapped[list["SessionStep"]] = relationship("SessionStep", back_populates="session", cascade="all, delete-orphan", order_by="SessionStep.step_number")
     attempts: Mapped[list["StepAttempt"]] = relationship("StepAttempt", back_populates="session", cascade="all, delete-orphan")
@@ -34,6 +39,8 @@ class SessionStep(Base):
     step_type: Mapped[str] = mapped_column(Enum("correctness", "optimization", name="step_type"), default="correctness")
     status: Mapped[str] = mapped_column(Enum("pending", "active", "completed", name="step_status"), default="pending")
     agent_feedback: Mapped[str] = mapped_column(Text, default="")
+    why: Mapped[str] = mapped_column(Text, default="")   # why this step: its purpose, how it moves towards the solution
+    tip: Mapped[str] = mapped_column(Text, default="")   # one extra useful fact (a concept, a pitfall, real-world use)
 
     session: Mapped["Session"] = relationship("Session", back_populates="steps")
 

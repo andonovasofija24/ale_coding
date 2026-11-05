@@ -1,0 +1,21 @@
+/** Tiny, real snippets per language for the decorative code backdrop. */
+export const SNIPPETS: Record<string, string[]> = {
+  cpp: ['for (auto& x : v)\n    sum += x;', 'std::sort(a.begin(), a.end());', 'template <typename T>\nT max(T a, T b);', 'cout << greet("World");'],
+  c: ['int *p = malloc(n * sizeof *p);', 'while (scanf("%d", &x) == 1)\n    s += x;', 'free(p); p = NULL;', 'printf("%ld\\n", sum);'],
+  java: ['List<Integer> xs = new ArrayList<>();', 'public static void main(String[] a)', '@Override\npublic String toString()', 'xs.stream().mapToInt(i -> i).sum();'],
+  python: ['def fib(n):\n    return n if n < 2 else fib(n-1) + fib(n-2)', '[x * x for x in xs if x % 2]', 'with open(path) as f:', 'from collections import Counter'],
+  javascript: ['const sum = xs.reduce((a, b) => a + b, 0);', 'export function greet(name) {', 'arr.filter(Boolean).map(String)', 'await fetch(url)'],
+  typescript: ['type Point = { x: number; y: number }', 'function id<T>(x: T): T { return x }', 'interface Node { next?: Node }'],
+  csharp: ['var evens = xs.Where(x => x % 2 == 0);', 'public record Point(int X, int Y);', 'Console.WriteLine($"{name}");'],
+  kotlin: ['fun greet(n: String) = "Hello, $n!"', 'val xs = listOf(1, 2, 3).map { it * 2 }', 'data class User(val id: Int)'],
+  php: ['$xs = array_map(fn($x) => $x * 2, $xs);', 'echo "Hello, {$name}!";', 'function sum(array $a): int'],
+  sql: ['SELECT name, COUNT(*)\nFROM students\nGROUP BY name;', 'JOIN grades g ON g.sid = s.id', 'WHERE mark >= 6\nORDER BY avg DESC'],
+  postgresql: ['CREATE INDEX ON grades (sid);', 'SELECT * FROM t\nLIMIT 10 OFFSET 20;', 'WITH RECURSIVE tree AS (…)'],
+  bash: ['for f in *.c; do gcc "$f"; done', 'grep -c "^$" file.txt', 'echo "$((a + b))"'],
+  prolog: ['parent(ana, marko).', 'grand(X, Z) :- parent(X, Y),\n    parent(Y, Z).', 'len([], 0).'],
+  lisp: ['(defun sq (x) (* x x))', '(mapcar #\'sq \'(1 2 3))', '(reduce #\'+ xs)'],
+  asm: ['mov eax, 1\nint 0x80', 'cmp rax, rbx\njle .loop', 'push rbp\nmov rbp, rsp'],
+  uml: ['class Книга {\n  - isbn: String\n  + достапна(): boolean\n}', 'Член "1" -- "0..*" Позајмица', 'Библиотекар --|> Вработен'],
+  er: ['СТУДЕНТ(индекс PK, име, презиме)', 'Студент N — запишува — M Предмет', 'ПРЕДМЕТ(шифра PK, назив, кредити)'],
+  web: ['<nav class="menu">\n  <a href="#">Почетна</a>', '.cards {\n  display: grid;\n  gap: 1rem;\n}', '@media (max-width: 600px)', 'btn.addEventListener("click", add)'],
+}

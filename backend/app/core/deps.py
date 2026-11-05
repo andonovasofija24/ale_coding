@@ -6,7 +6,8 @@ from sqlalchemy import select
 
 from app.database import get_db
 from app.core.security import decode_token
-from app.models.user import User
+from app.models.user import User, UserAIKey
+from app.services import ai_config, observability
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
@@ -21,10 +22,13 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     except JWTError:
         raise credentials_exc
 
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if user is None:
+    row = (await db.execute(select(User, UserAIKey).outerjoin(UserAIKey, UserAIKey.user_id == User.id)
+                            .where(User.id == user_id))).first()
+    if row is None:
         raise credentials_exc
+    user, own_key = row
+    observability.set_context(user_id=user.id)
+    ai_config.use_personal(ai_config.personal_from_row(own_key))  # their own AI key, if they saved one
     return user
 
 

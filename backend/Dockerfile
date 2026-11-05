@@ -4,6 +4,7 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    libreoffice-impress libreoffice-writer fonts-dejavu \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

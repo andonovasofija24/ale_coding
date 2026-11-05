@@ -8,6 +8,10 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string, name: string) => Promise<void>
   logout: () => void
+  /** After Microsoft sign-in: store the token and load the account. */
+  loginWithToken: (token: string) => Promise<void>
+  /** Reload the account (after editing the profile or the picture). */
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -21,9 +25,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const token = localStorage.getItem('ale_token')
     if (stored && token) {
       setUser(JSON.parse(stored))
+      // Refresh in the background: an admin may have changed the role since the last sign-in.
+      authApi.me().then((u: User) => {
+        localStorage.setItem('ale_user', JSON.stringify(u))
+        setUser(u)
+      }).catch(() => { /* 401 is handled by the API client */ })
     }
     setLoading(false)
   }, [])
+
+  const loginWithToken = async (token: string) => {
+    localStorage.setItem('ale_token', token)
+    const u: User = await authApi.me()
+    localStorage.setItem('ale_user', JSON.stringify(u))
+    setUser(u)
+  }
 
   const login = async (email: string, password: string) => {
     const data = await authApi.login({ email, password })
@@ -39,6 +55,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user)
   }
 
+  const refreshUser = async () => {
+    const u: User = await authApi.me()
+    localStorage.setItem('ale_user', JSON.stringify(u))
+    setUser(u)
+  }
+
   const logout = () => {
     localStorage.removeItem('ale_token')
     localStorage.removeItem('ale_user')
@@ -46,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, loginWithToken, refreshUser }}>
       {children}
     </AuthContext.Provider>
   )

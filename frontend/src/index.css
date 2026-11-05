@@ -2,48 +2,264 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * One highlighter per programming language. The marker always means "you are here";
+ * its colour tells you which language you are in. Default (and C++): yellow.
+ */
+:root,
+.lang-cpp {
+  --marker: 255 212 59;       /* #FFD43B */
+  --marker-soft: 255 244 194; /* #FFF4C2 */
+  --marker-deep: 138 106 0;   /* #8A6A00 */
+}
+.lang-java {
+  --marker: 255 169 77;       /* #FFA94D  orange */
+  --marker-soft: 255 232 204; /* #FFE8CC */
+  --marker-deep: 166 77 0;    /* #A64D00 */
+}
+.lang-python {
+  --marker: 140 233 154;      /* #8CE99A  green */
+  --marker-soft: 227 250 231; /* #E3FAE7 */
+  --marker-deep: 35 122 59;   /* #237A3B */
+}
+.lang-c {
+  --marker: 177 151 252;      /* #B197FC  lavender */
+  --marker-soft: 240 235 255; /* #F0EBFF */
+  --marker-deep: 95 61 196;   /* #5F3DC4 */
+}
+.lang-javascript {
+  --marker: 250 162 193;      /* #FAA2C1  pink */
+  --marker-soft: 255 236 243; /* #FFECF3 */
+  --marker-deep: 166 30 77;   /* #A61E4D */
+}
+.lang-sql {
+  --marker: 102 217 232;      /* #66D9E8  cyan */
+  --marker-soft: 227 250 252; /* #E3FAFC */
+  --marker-deep: 11 114 133;  /* #0B7285 */
+}
+.lang-postgresql {
+  --marker: 116 192 252;       /* #74C0FC */
+  --marker-soft: 227 242 254; /* #E3F2FE */
+  --marker-deep: 3 85 150;    /* #035596 */
+}
+.lang-typescript {
+  --marker: 145 167 255;       /* #91A7FF */
+  --marker-soft: 233 237 255; /* #E9EDFF */
+  --marker-deep: 0 31 153;    /* #001F99 */
+}
+.lang-php {
+  --marker: 99 230 190;       /* #63E6BE */
+  --marker-soft: 224 250 242; /* #E0FAF2 */
+  --marker-deep: 19 134 99;    /* #138663 */
+}
+.lang-git {
+  --marker: 255 146 120;       /* #FF9278  git orange */
+  --marker-soft: 255 236 230;  /* #FFECE6 */
+  --marker-deep: 168 45 18;    /* #A82D12 */
+}
+.lang-dockerfile {
+  --marker: 116 192 252;       /* #74C0FC  docker blue */
+  --marker-soft: 231 245 255;  /* #E7F5FF */
+  --marker-deep: 24 100 171;   /* #1864AB */
+}
+.lang-yaml {
+  --marker: 192 235 117;       /* #C0EB75  lime */
+  --marker-soft: 244 252 227;  /* #F4FCE3 */
+  --marker-deep: 74 110 8;     /* #4A6E08 */
+}
+.lang-terraform {
+  --marker: 177 151 252;       /* #B197FC  terraform purple */
+  --marker-soft: 243 240 255;  /* #F3F0FF */
+  --marker-deep: 95 61 196;    /* #5F3DC4 */
+}
+.lang-bash {
+  --marker: 206 212 218;       /* #CED4DA */
+  --marker-soft: 245 246 248; /* #F5F6F8 */
+  --marker-deep: 59 77 94;    /* #3B4D5E */
+}
+.lang-csharp {
+  --marker: 229 153 247;       /* #E599F7 */
+  --marker-soft: 250 235 253; /* #FAEBFD */
+  --marker-deep: 118 10 143;    /* #760A8F */
+}
+.lang-kotlin {
+  --marker: 255 135 135;       /* #FF8787 */
+  --marker-soft: 255 231 231; /* #FFE7E7 */
+  --marker-deep: 153 0 0;    /* #990000 */
+}
+.lang-prolog {
+  --marker: 192 235 117;       /* #C0EB75 */
+  --marker-soft: 242 251 227; /* #F2FBE3 */
+  --marker-deep: 93 136 17;    /* #5D8811 */
+}
+.lang-lisp {
+  --marker: 216 195 165;       /* #D8C3A5 */
+  --marker-soft: 247 243 237; /* #F7F3ED */
+  --marker-deep: 111 83 42;    /* #6F532A */
+}
+.lang-asm {
+  --marker: 153 169 191;       /* #99A9BF */
+  --marker-soft: 235 238 242; /* #EBEEF2 */
+  --marker-deep: 53 73 100;    /* #354964 */
+}
+.lang-uml, .lang-usecase, .lang-sequence, .lang-state, .lang-activity, .lang-component, .lang-package, .lang-deployment {
+  --marker: 252 196 25;        /* #FCC419  amber (diagrams) */
+  --marker-soft: 255 243 191; /* #FFF3BF */
+  --marker-deep: 140 90 0;     /* #8C5A00 */
+}
+.lang-er, .lang-relational {
+  --marker: 105 219 124;       /* #69DB7C  green (databases) */
+  --marker-soft: 235 251 238; /* #EBFBEE */
+  --marker-deep: 33 115 52;    /* #217334 */
+}
+.lang-web {
+  --marker: 255 140 105;       /* #FF8C69  coral (HTML/CSS) */
+  --marker-soft: 255 236 229; /* #FFECE5 */
+  --marker-deep: 178 59 18;    /* #B23B12 */
+}
+
 @layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
   body {
-    @apply bg-gray-50 text-gray-900;
+    @apply bg-paper text-ink font-sans;
+    font-feature-settings: 'ss01', 'cv11';
+    /* engineering graph paper: a fine 24px grid with a stronger line every 5 squares */
+    background-image:
+      linear-gradient(rgba(39,71,201,.11) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(39,71,201,.11) 1px, transparent 1px),
+      linear-gradient(rgba(39,71,201,.055) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(39,71,201,.055) 1px, transparent 1px);
+    background-size: 120px 120px, 120px 120px, 24px 24px, 24px 24px;
+    background-attachment: fixed;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-cobalt ring-offset-2 ring-offset-surface;
+  }
+  ::selection {
+    @apply bg-marker text-ink;
   }
 }
 
 @layer components {
+  /* Buttons */
   .btn {
-    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 h-9 px-4 rounded-lg text-sm font-semibold
+           transition-colors disabled:opacity-50 disabled:cursor-not-allowed select-none whitespace-nowrap;
   }
-  .btn-primary {
-    @apply btn bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800;
+  .btn-sm { @apply h-8 px-3 text-[13px] rounded-md; }
+  .btn-lg { @apply h-11 px-5 text-[15px]; }
+  /* the main action is ink (one strong colour less on every page); the marker stays the only accent */
+  .btn-primary { @apply btn bg-ink text-white hover:bg-black active:bg-black shadow-[inset_0_-2px_0_rgba(0,0,0,.35)] active:shadow-none; }
+  .btn-secondary { @apply btn bg-surface text-ink border-[1.5px] border-line-strong hover:border-ink hover:bg-paper/60 shadow-[inset_0_-2px_0_rgba(26,34,51,.06)]; }
+  .btn-ghost { @apply btn bg-transparent text-ink-soft hover:bg-ink/5 hover:text-ink; }
+  .btn-danger { @apply btn bg-surface text-bad border border-line hover:border-bad hover:bg-bad-soft; }
+  /* kept for compatibility with older markup */
+  .btn-success { @apply btn bg-ok text-white; }
+
+  /* Surfaces */
+  .card { @apply bg-surface rounded-xl border-2 border-line shadow-[0_2px_0_rgba(26,34,51,.05)]; }
+  /* the surfaces that matter most on a page: ink outline + a printed offset shadow */
+  .card-stamp { @apply bg-surface rounded-xl border-2 border-ink shadow-stamp; }
+  .panel-title { @apply text-[13px] font-semibold text-ink-soft; }
+
+  /* A page of a school notebook (ruled lines + the red margin) for empty states and starting points */
+  .notebook {
+    background-color: #FFFFFF;
+    background-image:
+      linear-gradient(90deg, transparent 39px, rgba(224,49,49,.35) 39px, rgba(224,49,49,.35) 41px, transparent 41px),
+      repeating-linear-gradient(transparent 0 27px, rgba(39,71,201,.08) 27px 28px);
   }
-  .btn-secondary {
-    @apply btn bg-white text-gray-700 border border-gray-300 hover:bg-gray-50;
+
+  /* Forms */
+  .field-label { @apply block text-[13px] font-semibold text-ink-soft mb-1.5; }
+  .field-hint { @apply text-xs text-ink-muted mt-1; }
+  .input {
+    @apply w-full h-10 rounded-lg border-[1.5px] border-line-strong bg-surface px-3 text-sm text-ink placeholder:text-ink-faint
+           transition-colors hover:border-ink-faint focus:border-cobalt focus:outline-none focus:ring-2 focus:ring-cobalt/20;
   }
-  .btn-success {
-    @apply btn bg-green-600 text-white hover:bg-green-700;
+  textarea.input { @apply h-auto py-2 leading-relaxed; }
+
+  /* Highlighter stroke behind text — the brand device ("you are here") */
+  .marker {
+    /* the current language's marker colour (see .lang-* above) */
+    background-image: linear-gradient(transparent 48%, rgb(var(--marker)) 48%, rgb(var(--marker)) 94%, transparent 94%);
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    padding: 0 .12em;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
   }
-  .btn-danger {
-    @apply btn bg-red-600 text-white hover:bg-red-700;
+
+  /* Notebook grid used on large empty areas */
+  .grid-paper {
+    background-color: #EEF1F5; /* = colors.paper */
+    background-image:
+      linear-gradient(rgba(26,34,51,.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(26,34,51,.045) 1px, transparent 1px);
+    background-size: 24px 24px;
   }
-  .card {
-    @apply bg-white rounded-xl border border-gray-200 shadow-sm;
+
+  .code-block { @apply font-mono text-[12.5px] leading-relaxed rounded-lg bg-paper/70 border border-line-soft px-3 py-2 whitespace-pre-wrap text-ink-soft; }
+}
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #CBD1DB; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: #AEB6C4; background-clip: content-box; border: 2px solid transparent; }
+
+/* Markdown in task description */
+.task-description { @apply text-[14.5px] leading-relaxed text-ink-soft; }
+.task-description h1,
+.task-description h2,
+.task-description h3 { @apply font-bold text-ink; }
+.task-description h1 { @apply text-lg mb-3; }
+.task-description h2 { @apply text-base mb-2 mt-4; }
+.task-description h3 { @apply text-[15px] mb-2 mt-3; }
+.task-description p { @apply mb-3; }
+.task-description strong { @apply text-ink font-semibold; }
+.task-description ul { @apply list-disc pl-5 mb-3 space-y-1 marker:text-ink-faint; }
+.task-description ol { @apply list-decimal pl-5 mb-3 space-y-1.5 marker:text-ink-muted marker:font-semibold; }
+.task-description code { @apply font-mono text-[12.5px] bg-cobalt-soft text-cobalt-hover px-1.5 py-0.5 rounded; }
+.task-description pre { @apply font-mono text-[12.5px] bg-ink text-white/90 p-3 rounded-lg overflow-x-auto mb-3; }
+.task-description pre code { @apply bg-transparent text-inherit p-0; }
+.task-description hr { @apply border-line my-4; }
+.task-description table { @apply w-full text-sm mb-3 border-collapse; }
+.task-description th { @apply text-left font-semibold text-ink bg-paper px-3 py-1.5 border border-line; }
+.task-description td { @apply px-3 py-1.5 border border-line align-top; }
+.task-description img { @apply max-w-full rounded-lg; }
+
+/* AI tutor notes: the model sometimes answers in Markdown (headings, lists, code) — render it compactly */
+.note-md { @apply text-sm leading-relaxed text-ink-soft; }
+.note-md > * + * { @apply mt-2; }
+.note-md h1, .note-md h2, .note-md h3, .note-md h4 { @apply text-[13.5px] font-bold text-ink mt-3 first:mt-0; }
+.note-md strong { @apply font-semibold text-ink; }
+.note-md ul { @apply list-disc pl-5 space-y-1; }
+.note-md ol { @apply list-decimal pl-5 space-y-1; }
+.note-md code { @apply font-mono text-[12.5px] bg-paper text-ink px-1 py-0.5 rounded; }
+.note-md pre { @apply font-mono text-[12.5px] bg-ink text-white/90 p-2.5 rounded-lg overflow-x-auto; }
+.note-md pre code { @apply bg-transparent text-inherit p-0; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
   }
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
-
-/* Markdown in task description */
-.task-description h1,h2,h3 { @apply font-bold; }
-.task-description h1 { @apply text-xl mb-3; }
-.task-description h2 { @apply text-lg mb-2; }
-.task-description h3 { @apply text-base mb-2; }
-.task-description p { @apply mb-3 leading-relaxed; }
-.task-description ul { @apply list-disc pl-5 mb-3 space-y-1; }
-.task-description ol { @apply list-decimal pl-5 mb-3 space-y-1; }
-.task-description code { @apply bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono; }
-.task-description pre { @apply bg-gray-900 text-gray-100 p-3 rounded-lg overflow-x-auto mb-3; }
-.task-description pre code { @apply bg-transparent p-0; }
-.task-description hr { @apply border-gray-200 my-4; }
+/* Home: the console lines come in one after another (one orchestrated moment), the access card rises once */
+@layer components {
+  .console-line { animation: console-in .45s cubic-bezier(.2,.7,.2,1) both; }
+  .home-rise { animation: home-rise .6s cubic-bezier(.2,.7,.2,1) both; }
+}
+@keyframes console-in { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
+@keyframes home-rise { from { opacity: 0; transform: translateY(10px) rotate(-1deg); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .console-line, .home-rise { animation: none; }
+}
+li[data-over="1"] > button { background: rgb(var(--marker)); border-color: #1A2233; }

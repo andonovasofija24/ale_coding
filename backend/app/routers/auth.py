@@ -1,3 +1,4 @@
+from fastapi.concurrency import run_in_threadpool
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -19,7 +20,7 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
 
     user = User(
         email=data.email,
-        password_hash=hash_password(data.password),
+        password_hash=await run_in_threadpool(hash_password, data.password),
         name=data.name,
         role="student",
     )
@@ -35,7 +36,9 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
 async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == data.email))
     user = result.scalar_one_or_none()
-    if not user or not verify_password(data.password, user.password_hash):
+    if user and user.auth_provider != "password":
+        raise HTTPException(status_code=401, detail="Use Microsoft sign-in")
+    if not user or not await run_in_threadpool(verify_password, data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     token = create_access_token({"sub": str(user.id)})

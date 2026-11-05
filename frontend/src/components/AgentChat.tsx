@@ -1,65 +1,74 @@
 import { useEffect, useRef } from 'react'
 import { AgentMessage } from '../types'
-import { Bot, User } from 'lucide-react'
+import { CheckCircle2, XCircle, Lightbulb, Route, Flag, AlertTriangle, CornerDownRight, Sparkles } from 'lucide-react'
+import { useLanguage } from '../i18n/LanguageContext'
+import Markdown from './Markdown'
+import EmptyState from './EmptyState'
 
 interface Props {
   messages: AgentMessage[]
   isLoading: boolean
 }
 
+const STYLES: Record<string, { bar: string; icon: JSX.Element; titleKey: string; tone: string }> = {
+  pass: { bar: 'border-l-ok', icon: <CheckCircle2 size={15} className="text-ok" />, titleKey: 'chat.pass', tone: 'text-ok' },
+  fail: { bar: 'border-l-bad', icon: <XCircle size={15} className="text-bad" />, titleKey: 'chat.fail', tone: 'text-bad' },
+  hint: { bar: 'border-l-marker', icon: <Lightbulb size={15} className="text-marker-deep" />, titleKey: 'chat.hint', tone: 'text-marker-deep' },
+  step: { bar: 'border-l-cobalt', icon: <Route size={15} className="text-cobalt" />, titleKey: 'chat.newStep', tone: 'text-cobalt' },
+  done: { bar: 'border-l-ok', icon: <Flag size={15} className="text-ok" />, titleKey: 'chat.done', tone: 'text-ok' },
+  error: { bar: 'border-l-bad', icon: <AlertTriangle size={15} className="text-bad" />, titleKey: 'chat.error', tone: 'text-bad' },
+  note: { bar: 'border-l-ink-faint', icon: <Sparkles size={15} className="text-ink-muted" />, titleKey: 'chat.note', tone: 'text-ink-soft' },
+}
+
+/** Tutor feedback as a running log of notes, coloured by outcome. */
 export default function AgentChat({ messages, isLoading }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null)
+  const { t } = useLanguage()
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [messages, isLoading])
 
   if (messages.length === 0 && !isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-gray-400 text-sm gap-2">
-        <Bot size={32} className="opacity-40" />
-        <p>Submit your code to get AI feedback on the current step.</p>
-      </div>
+      <EmptyState icon={<Lightbulb size={22} />} tone="marker" compact title={t('chat.emptyTitle')} text={t('chat.empty')} />
     )
   }
 
   return (
-    <div className="flex flex-col gap-3 overflow-y-auto h-full pr-1">
-      {messages.map((msg, i) => (
-        <div key={i} className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-          {msg.role === 'assistant' && (
-            <div className="shrink-0 w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center">
-              <Bot size={14} className="text-blue-600" />
+    <div className="flex flex-col gap-3 pb-2" aria-live="polite">
+      {messages.map((msg, i) => {
+        if (msg.role === 'user' || msg.kind === 'action') {
+          return (
+            <div key={i} className="flex items-center gap-1.5 text-xs text-ink-muted pt-1">
+              <CornerDownRight size={13} />
+              <span>{msg.content}</span>
+              <span className="ml-auto tabular-nums text-ink-faint">
+                {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
             </div>
-          )}
-          <div
-            className={`max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed ${
-              msg.role === 'user'
-                ? 'bg-blue-600 text-white rounded-br-sm'
-                : 'bg-gray-100 text-gray-800 rounded-bl-sm'
-            }`}
-          >
-            {msg.content}
-          </div>
-          {msg.role === 'user' && (
-            <div className="shrink-0 w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center">
-              <User size={14} className="text-gray-600" />
-            </div>
-          )}
-        </div>
-      ))}
+          )
+        }
+        const st = STYLES[msg.kind ?? 'note'] ?? STYLES.note
+        return (
+          <article key={i} className={`bg-surface rounded-lg border border-line-soft border-l-[3px] ${st.bar} px-3.5 py-3`}>
+            <header className={`flex items-center gap-1.5 text-[13px] font-bold ${st.tone}`}>
+              {st.icon}
+              {msg.title ?? t(st.titleKey as any)}
+            </header>
+            <div className="mt-1.5 note-md"><Markdown>{msg.content}</Markdown></div>
+          </article>
+        )
+      })}
+
       {isLoading && (
-        <div className="flex gap-2 justify-start">
-          <div className="shrink-0 w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center">
-            <Bot size={14} className="text-blue-600" />
-          </div>
-          <div className="bg-gray-100 rounded-xl rounded-bl-sm px-4 py-3">
-            <div className="flex gap-1">
-              <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-            </div>
-          </div>
+        <div className="flex items-center gap-2 text-[13px] text-ink-muted px-1">
+          <span className="flex gap-1">
+            {[0, 150, 300].map((d) => (
+              <span key={d} className="w-1.5 h-1.5 bg-ink-faint rounded-full animate-bounce" style={{ animationDelay: `${d}ms` }} />
+            ))}
+          </span>
+          {t('chat.thinking')}
         </div>
       )}
       <div ref={bottomRef} />

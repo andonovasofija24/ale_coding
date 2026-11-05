@@ -1,9 +1,30 @@
+# Тајни (клучеви, лозинки)
 .env
+.env.*
+!.env.example
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
-node_modules/
-dist/
-.DS_Store
 *.egg-info/
 .venv/
+venv/
+
+# Node / frontend
+node_modules/
+dist/
+*.tsbuildinfo
+
+# IDE
+.idea/
+.vscode/
+.jbeval/
+
+# Пакети со измени
+*.zip
+*.md5
+
+# Систем
+.DS_Store
+Thumbs.db
