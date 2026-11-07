@@ -1,6 +1,6 @@
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Award, BookOpen, ChevronRight, ClipboardList, Loader2, Mail, Megaphone, Settings, Table2, Users } from 'lucide-react'
+import { ArrowLeft, Award, BookOpen, ChevronRight, ClipboardList, Loader2, Mail, Megaphone, Settings, Table2, Users, ScrollText } from 'lucide-react'
 import { coursesApi } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { usePageTour } from '../components/Tour'
@@ -14,13 +14,14 @@ import { Deadline, KindBadge, Points, StatusBadge, fmt } from '../components/cou
 import AssignmentsTab from '../components/course/AssignmentsTab'
 import StudentsTab from '../components/course/StudentsTab'
 import GradebookTab from '../components/course/GradebookTab'
+import LogView from '../components/LogView'
 import SettingsTab from '../components/course/SettingsTab'
 import MailTab from '../components/course/MailTab'
 import MaterialsTab from '../components/course/MaterialsTab'
 import Announcements from '../components/course/Announcements'
 import { MyStanding } from '../components/course/Standing'
 
-type Tab = 'assignments' | 'students' | 'grades' | 'materials' | 'mail' | 'settings' | 'notices' | 'standing'
+type Tab = 'assignments' | 'students' | 'grades' | 'materials' | 'mail' | 'settings' | 'notices' | 'standing' | 'logs'
 
 /** A course: students see their assignments; staff manage assignments, students, grades and settings. */
 export default function CoursePage() {
@@ -53,6 +54,7 @@ export default function CoursePage() {
     { key: 'grades', label: t('course.tabGrades'), icon: <Table2 size={15} /> },
     { key: 'materials', label: t('course.tabMaterials'), icon: <BookOpen size={15} /> },
     { key: 'mail', label: t('course.tabMail'), icon: <Mail size={15} /> },
+    { key: 'logs', label: t('course.tabLogs'), icon: <ScrollText size={15} /> },
     ...(user?.role === 'admin' ? [{ key: 'settings' as Tab, label: t('course.tabSettings'), icon: <Settings size={15} /> }] : []),
   ] : [
     { key: 'assignments', label: t('course.tabAssignments'), icon: <ClipboardList size={15} /> },
@@ -100,6 +102,7 @@ export default function CoursePage() {
             {tab === 'grades' && staff && <GradebookTab course={course} />}
             {tab === 'materials' && <MaterialsTab course={course} />}
             {tab === 'mail' && staff && <MailTab course={course} />}
+            {tab === 'logs' && staff && !lab && <><p className="mb-4 text-sm text-ink-muted max-w-3xl">{t('log.hintCourse')}</p><LogView mode="course" courseId={course.id} /></>}
             {tab === 'settings' && user?.role === 'admin' && <SettingsTab course={course} />}
             {tab === 'notices' && !staff && <Announcements courseId={course.id} />}
             {tab === 'standing' && !staff && <MyStanding courseId={course.id} />}

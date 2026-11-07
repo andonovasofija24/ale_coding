@@ -23,7 +23,7 @@ from app.database import get_db
 from app.models.course import CourseMember
 from app.models.user import User
 from app.routers.assignments import gradebook_data
-from app.services import gradesheet, standing
+from app.services import gradesheet, observability, standing
 
 router = APIRouter(tags=["standing"])
 
@@ -42,6 +42,7 @@ async def set_grading(course_id: uuid.UUID, body: dict, db: AsyncSession = Depen
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=422, detail=str(e))
     await db.commit()
+    await observability.activity("grading_rules", weights=course.grading.get("weights"))
     return standing.scheme(course)
 
 
@@ -66,6 +67,7 @@ async def set_final_grade(course_id: uuid.UUID, body: FinalGradeIn, db: AsyncSes
         grades[str(body.user_id)] = {"grade": body.grade, "by": str(user.id), "at": datetime.utcnow().isoformat() + "Z"}
     course.final_grades = grades
     await db.commit()
+    await observability.activity("final_grade", student=body.user_id, grade=body.grade)
     return {"user_id": str(body.user_id), "final_grade": body.grade}
 
 

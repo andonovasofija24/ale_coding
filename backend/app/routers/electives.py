@@ -27,7 +27,7 @@ from app.database import get_db
 from app.models.electives import ElectiveChoice, ElectivePlan, ElectiveRequest
 from app.models.task import Subject
 from app.models.user import User
-from app.services import content
+from app.services import content, observability
 
 router = APIRouter(tags=["electives"])
 
@@ -126,6 +126,7 @@ async def choose_elective(body: ChoiceIn, db: AsyncSession = Depends(get_db), us
     else:
         c.semester = body.semester
     await db.commit()
+    await observability.activity("elective_choose", subject_id=body.subject_id, semester=body.semester)
     return await _my_plan(db, user, lang)
 
 
@@ -137,6 +138,7 @@ async def drop_elective(subject_id: uuid.UUID, db: AsyncSession = Depends(get_db
     if c is not None:
         await db.delete(c)
         await db.commit()
+        await observability.activity("elective_drop", subject_id=subject_id)
     return await _my_plan(db, user, lang)
 
 
@@ -148,6 +150,7 @@ async def confirm_electives(db: AsyncSession = Depends(get_db), user: User = Dep
         raise HTTPException(status_code=422, detail="Choose at least one elective first")
     (await _plan(db, user.id)).confirmed_at = datetime.utcnow()
     await db.commit()
+    await observability.activity("electives_confirm")
     return await _my_plan(db, user, lang)
 
 
@@ -188,6 +191,8 @@ async def request_change(body: RequestIn, db: AsyncSession = Depends(get_db), us
                         add_subject_id=body.add_subject_id, add_semester=body.add_semester, reason=body.reason.strip())
     db.add(r)
     await db.commit()
+    await observability.activity("elective_request", request_id=r.id, remove=r.remove_subject_id, add=r.add_subject_id,
+                                 semester=r.add_semester)
     return await _request_out(db, r, lang)
 
 
@@ -201,6 +206,7 @@ async def cancel_request(request_id: uuid.UUID, db: AsyncSession = Depends(get_d
         raise HTTPException(status_code=409, detail="The request was already decided")
     r.status, r.decided_at = "cancelled", datetime.utcnow()
     await db.commit()
+    await observability.activity("elective_cancel", request_id=r.id)
 
 
 # ------------------------------------------------------------------ admin
@@ -243,6 +249,7 @@ async def approve_request(request_id: uuid.UUID, body: DecisionIn, db: AsyncSess
         db.add(ElectiveChoice(user_id=r.user_id, subject_id=r.add_subject_id, semester=r.add_semester))
     r.status, r.admin_note, r.decided_at, r.decided_by = "approved", body.note.strip(), datetime.utcnow(), admin.id
     await db.commit()
+    await observability.activity("elective_approve", request_id=r.id, student=r.user_id)
     return await _request_out(db, r, lang, with_user=True)
 
 
@@ -252,6 +259,7 @@ async def reject_request(request_id: uuid.UUID, body: DecisionIn, db: AsyncSessi
     r = await _pending(db, request_id)
     r.status, r.admin_note, r.decided_at, r.decided_by = "rejected", body.note.strip(), datetime.utcnow(), admin.id
     await db.commit()
+    await observability.activity("elective_reject", request_id=r.id, student=r.user_id)
     return await _request_out(db, r, lang, with_user=True)
 
 
@@ -262,4 +270,5 @@ async def reopen_choice(user_id: uuid.UUID, db: AsyncSession = Depends(get_db), 
     if plan is not None:
         plan.confirmed_at = None
         await db.commit()
+        await observability.activity("electives_reopen", student=user_id)
     return {"ok": True}

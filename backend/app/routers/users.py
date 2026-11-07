@@ -46,6 +46,9 @@ async def set_role(user_id: uuid.UUID, body: RoleIn, db: AsyncSession = Depends(
         raise HTTPException(status_code=404, detail="User not found")
     if u.id == admin.id and body.role != "admin":
         raise HTTPException(status_code=409, detail="You can't remove your own admin role")
+    old = u.role
     u.role = body.role
     await db.commit()
+    from app.services import observability
+    await observability.activity("user_role", member=u.id, email=u.email, old=old, new=body.role)
     return _out(u)

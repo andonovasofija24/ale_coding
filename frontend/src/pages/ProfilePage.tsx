@@ -11,6 +11,7 @@ import AppHeader from '../components/AppHeader'
 import Avatar from '../components/Avatar'
 import PasswordInput from '../components/PasswordInput'
 import OwnAIKeyCard from '../components/OwnAIKeyCard'
+import LogView from '../components/LogView'
 
 /** Crop the middle square of a picture and shrink it to 256×256 JPEG in the browser (small upload, no EXIF). */
 async function squareJpeg(file: File, size = 256): Promise<Blob> {
@@ -177,6 +178,12 @@ export default function ProfilePage() {
       {form.auth_provider === 'password' ? <PasswordCard /> : (
         <p className="mt-5 text-[13px] text-ink-muted">{t('profile.microsoftAccount')}</p>
       )}
+
+      <section className="mt-8" aria-labelledby="my-activity">
+        <h2 id="my-activity" className="font-extrabold text-lg">{t('log.mine')}</h2>
+        <p className="mt-0.5 mb-3 text-[13px] text-ink-muted">{t('log.hintMine')}</p>
+        <LogView mode="me" compact />
+      </section>
     </Shell>
   )
 }

@@ -382,3 +382,19 @@ export const ltiApi = {
   deletePlatform: (id: string) => api.delete(`/admin/lti/platforms/${id}`),
   newRegistration: (name: string) => api.post('/admin/lti/registrations', { name }).then((r) => r.data),
 }
+
+// Logs: AI calls, test runs and what people do
+export type LogParams = Record<string, string | number | boolean | undefined>
+const clean = (p: LogParams) => Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined && v !== ''))
+export const logsApi = {
+  admin: (p: LogParams) => api.get('/admin/logs', { params: clean(p) }).then((r) => r.data),
+  course: (courseId: string, p: LogParams) => api.get(`/courses/${courseId}/logs`, { params: clean(p) }).then((r) => r.data),
+  mine: (p: LogParams) => api.get('/me/activity', { params: clean(p) }).then((r) => r.data),
+  csv: async (p: LogParams) => {
+    const r = await api.get('/admin/logs.csv', { params: clean(p), responseType: 'blob' })
+    const url = URL.createObjectURL(r.data)
+    const a = document.createElement('a')
+    a.href = url; a.download = `ale-logs-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.csv`; a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  },
+}

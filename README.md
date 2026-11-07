@@ -116,10 +116,25 @@ professor, Instructor (and Instructor#TeachingAssistant) → assistant, Instruct
 The admin sets the professor and the лаборанти once per course; a role the admin sets is **locked** (🔒 in *Students*)
 — Moodle never changes it (click the lock to let Moodle set it again). Moodle can only raise an unlocked role.
 
+## Logs
+
+*Administration → Logs* shows everything the platform records, newest first: **AI calls** (tutor steps and checks,
+hints, explanations, visualisations, the grading tutor, generated tasks — with model, tokens, duration), **test runs**
+(passed / total, language), and **activity** — sign-ins (also failed ones; an unknown e-mail is masked), tutor
+sessions, steps checked, finished tasks, submissions, points, published points, comments, attendance, assignments,
+courses and people, electives and requests, LTI launches, grading rules, final grades, subject and role changes.
+Filter by kind, period, operation or person; *Live* refreshes every 5 s; *CSV* exports up to 20 000 lines; a line opens
+its details. The professor and assistants see the course's activity in the course (*Activity* tab, incl. the students'
+own practice in the subject); everyone sees their own in *Profile → My activity*. Logs older than
+`LOG_RETENTION_DAYS` (default 180, `0` = keep) are deleted at start-up.
+
 ## Subjects
 
-All 174 subjects of FINKI's 2023 study programmes (`backend/app/data/finki_subjects.csv`: code, name, recommended
-semester, mandatory / elective) are added once by `seed.py`; the admin adds new subjects to the catalogue when they appear.
+The subjects of FINKI's 2023 study programmes that have a programming language or programming logic — 78 of them
+(`backend/app/data/finki_subjects.csv`: code, name, recommended semester, mandatory / elective) — are added once by
+`seed.py`; the admin adds new subjects to the catalogue when they appear. Subjects without programming (mathematics,
+business, pedagogy, networks theory…) were removed by the migration `20261104_programming_only` — except those that
+already had tasks or courses, so nothing anyone made is lost.
 
 **Electives.** Each student puts electives into their own semesters (*Subjects*): with the semester on the card,
 with "Add an elective" in a semester, or by dragging the card onto a semester. They choose freely once and then

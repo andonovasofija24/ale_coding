@@ -30,6 +30,7 @@ import LtiPage from './pages/LtiPage'
 import AdminLtiPage from './pages/admin/AdminLtiPage'
 import AdminCoursesPage from './pages/admin/AdminCoursesPage'
 import AdminElectivesPage from './pages/admin/AdminElectivesPage'
+import AdminLogsPage from './pages/admin/AdminLogsPage'
 
 /** adminOnly: admins; staffOnly: assistants, professors and admins (task authors). */
 function ProtectedRoute({ children, adminOnly = false, staffOnly = false }: { children: React.ReactNode; adminOnly?: boolean; staffOnly?: boolean }) {
@@ -75,6 +76,7 @@ export default function App() {
       <Route path="/admin/monitoring" element={<ProtectedRoute adminOnly><AdminMonitoringPage /></ProtectedRoute>} />
  <Route path="/admin/courses" element={<ProtectedRoute adminOnly><AdminCoursesPage /></ProtectedRoute>} />
  <Route path="/admin/electives" element={<ProtectedRoute adminOnly><AdminElectivesPage /></ProtectedRoute>} />
+ <Route path="/admin/logs" element={<ProtectedRoute adminOnly><AdminLogsPage /></ProtectedRoute>} />
       <Route path="/admin/lti" element={<ProtectedRoute adminOnly><AdminLtiPage /></ProtectedRoute>} />
       <Route path="/admin/mail" element={<ProtectedRoute adminOnly><AdminMailPage /></ProtectedRoute>} />
       <Route path="/admin/tasks/import" element={<ProtectedRoute staffOnly><AdminImportPage /></ProtectedRoute>} />

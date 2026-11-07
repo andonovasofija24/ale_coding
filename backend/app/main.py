@@ -5,8 +5,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from app.config import settings
 from app.database import AsyncSessionLocal
-from app.routers import auth, tasks, sessions, admin, ops, courses, users, sso, assignments, profiles, emails, materials, standings, diagrams, ai_keys, subjects, lti, electives
+from app.routers import auth, tasks, sessions, admin, ops, courses, users, sso, assignments, profiles, emails, materials, standings, diagrams, ai_keys, subjects, lti, electives, logs
 from app.services import ai_config, observability, reminders, submission_queue
 from app.services.agent_service import AIUnavailable
 
@@ -20,6 +21,9 @@ async def lifespan(_: FastAPI):
                                 has_key=bool(cfg.api_key))
     except Exception:
         observability.log.exception("could not load AI settings; using environment defaults")
+    gone = await observability.prune(settings.LOG_RETENTION_DAYS)
+    if gone:
+        observability.log_event("old logs pruned", events=gone, days=settings.LOG_RETENTION_DAYS)
     submission_queue.start()  # finish submissions an earlier run left in the queue
     reminders.start()  # deadline reminders, every few minutes
     yield
@@ -55,6 +59,7 @@ app.include_router(ai_keys.router)
 app.include_router(subjects.router)
 app.include_router(lti.router)
 app.include_router(electives.router)
+app.include_router(logs.router)
 
 
 @app.exception_handler(AIUnavailable)

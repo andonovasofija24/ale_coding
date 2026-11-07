@@ -625,3 +625,19 @@ export interface PracticeWork {
   task_id: string; title: string; language: string; student: { user_id: string; name: string; email: string }
   status: 'in_progress' | 'completed' | null; code: string; updated_at: string | null; steps: { n: number; title: string; status: string }[]
 }
+
+/** One entry of the logs (an AI call, a test run, something a person did). */
+export interface LogItem {
+  id: number; at: string; kind: 'ai' | 'tests' | 'activity' | 'limit' | 'audit'; operation: string; ok: boolean
+  duration_ms: number; language: string | null
+  user?: { id: string; name: string; email: string; role: string; course_role?: string | null } | null
+  about?: string   // the other person the action was about (a student graded, a member changed)
+  task: { id: string; title: string } | null; course: { id: string; code: string; name: string } | null
+  session_id: string | null; extra: Record<string, any>; error: string | null
+  provider?: string | null; model?: string | null; input_tokens?: number; output_tokens?: number; request_id?: string | null
+}
+export interface LogPage {
+  items: LogItem[]; next_before: number | null
+  operations?: { operation: string; kind: string; count: number; errors: number }[]
+  totals?: Record<string, number>
+}

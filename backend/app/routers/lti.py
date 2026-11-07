@@ -188,6 +188,8 @@ async def _handle(db: AsyncSession, platform: LtiPlatform, c: dict) -> dict:
         await db.flush()
         if ctx.course_id:
             await lti.enrol(db, ctx.course_id, user, course_role)
+    observability.set_context(user_id=user.id, course_id=ctx.course_id if ctx else None)
+    await observability.activity("lti_launch", message=kind, role=course_role, platform=platform.issuer)
 
     if kind == "LtiDeepLinkingRequest":
         if course_role not in ("teacher", "assistant"):

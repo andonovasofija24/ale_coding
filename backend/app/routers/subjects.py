@@ -28,7 +28,7 @@ from app.models.session import Session
 from app.models.task import Subject, Task
 from app.models.user import User
 from app.schemas.task import LANGUAGES
-from app.services import ai_config, content, limits, practice
+from app.services import ai_config, content, limits, observability, practice
 
 router = APIRouter(tags=["subjects"])
 
@@ -139,6 +139,8 @@ async def new_practice_task(subject_id: uuid.UUID, body: PracticeIn, db: AsyncSe
     if body.language not in (s.languages or []) or body.language not in LANGUAGES:
         raise HTTPException(status_code=422, detail="This subject has no tasks in that language")
     task = await practice.generate(db, user, s, body.language, body.level, body.topic, lang)
+    observability.set_context(task_id=task.id)
+    await observability.activity("practice_generate", subject_id=s.id, title=task.title, language=body.language, level=body.level)
     return {"task_id": str(task.id), "title": task.title}
 
 
@@ -189,6 +191,7 @@ async def create_subject(body: SubjectIn, db: AsyncSession = Depends(get_db), _:
                    "elective": body.elective or body.semester is None}, position=pos)
     db.add(s)
     await db.commit()
+    await observability.activity("subject_create", subject_id=s.id, code=s.code, name=s.name)
     return _subject_out(s, "mk")
 
 
@@ -204,14 +207,17 @@ async def update_subject(subject_id: uuid.UUID, body: SubjectIn, db: AsyncSessio
     s.finki_code = (body.finki_code or "").strip() or None
     s.elective = body.elective or body.semester is None
     await db.commit()
+    await observability.activity("subject_update", subject_id=s.id, code=s.code, name=s.name)
     return _subject_out(s, "mk")
 
 
 @router.delete("/admin/subjects/{subject_id}", status_code=204)
 async def delete_subject(subject_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)):
     s = await _subject(db, subject_id)
+    code, name = s.code, s.name
     await db.delete(s)  # tasks and courses keep existing, without a subject
     await db.commit()
+    await observability.activity("subject_delete", subject_id=subject_id, code=code, name=name)
 
 
 # ---------------------------------------------------------------------------

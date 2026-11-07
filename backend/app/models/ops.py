@@ -34,7 +34,7 @@ class Event(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    kind: Mapped[str] = mapped_column(String(16), nullable=False)        # ai | tests
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)        # ai | tests | activity | limit | audit
     operation: Mapped[str] = mapped_column(String(32), nullable=False)   # next_step | evaluate | hint | explain | visualize | test_connection | run_tests
     ok: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     duration_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -48,9 +48,12 @@ class Event(Base):
     user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
     task_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
     session_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    course_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)   # the course it happened in
     extra: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)  # e.g. {"passed": 2, "total": 3}
 
     __table_args__ = (
         Index("ix_events_created_at", "created_at"),
         Index("ix_events_kind_created", "kind", "created_at"),
+        Index("ix_events_user_created", "user_id", "created_at"),
+        Index("ix_events_course_created", "course_id", "created_at"),
     )

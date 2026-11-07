@@ -67,7 +67,6 @@ EXTRAS = {
     "F23L3W060": (None, "System Administration", ["bash", "git", "dockerfile"], "terminal", "#343A40"),
     "F23L3S062": (None, "Virtualization", ["dockerfile", "yaml", "bash"], "container", "#0B7285"),
     "F23L3W068": (None, "Cloud Computing", ["terraform", "yaml", "dockerfile"], "cloud", "#1971C2"),
-    "F23L3S059": (None, "Network Administration", ["bash"], "network", "#2B8A3E"),
     "F23L3W021": (None, "Team Project", ["git", "yaml", "dockerfile"], "git-branch", "#C2255C"),
     "F23L1W007": (None, "Introduction to Computer Science", ["python"], "book-open", "#2747C9"),
     "F23L2W201": (None, "Applied Algorithms and Data Structures", ["python", "cpp", "java"], "git-fork", "#0CA678"),

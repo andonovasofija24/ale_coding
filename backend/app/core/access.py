@@ -30,6 +30,7 @@ from app.core.deps import get_current_user
 from app.models.course import Course, CourseMember, Assignment, AssignmentTask
 from app.models.task import Task
 from app.models.user import User
+from app.services import observability
 
 STAFF_ROLES = ("assistant", "professor", "admin")
 COURSE_CREATORS = ("admin",)
@@ -95,6 +96,7 @@ async def load_course(db: AsyncSession, user: User, course_id, roles: tuple[str,
         raise HTTPException(status_code=404, detail="Course not found")
     if roles is not None and role not in roles:
         raise HTTPException(status_code=403, detail="Course staff access required")
+    observability.set_context(course_id=course.id)   # events of this request belong to the course (logs)
     return course, role
 
 

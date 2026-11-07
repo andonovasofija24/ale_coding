@@ -2,7 +2,8 @@
 Observability: structured request logs and recorded events (AI calls, test runs).
 
 - Every HTTP request gets a request id (X-Request-ID header, generated if missing) and one JSON log line.
-- AI calls and test runs are written to the `events` table with duration, outcome, model and token usage,
+- AI calls, test runs and what people do (activity: sign-ins, sessions, steps, submissions, grades, electives, admin
+  changes…) are written to the `events` table with duration, outcome, model and token usage,
   plus who/what they were for (user, task, session). The admin monitoring dashboard reads this table.
 - Context (request id, user, task, session) travels in contextvars, so services don't need extra parameters.
 - Recording never breaks the request: it uses its own DB session and swallows its own errors.
@@ -140,8 +141,31 @@ async def record(
                 prog_language=prog_language[:16], error=(error or "")[:2000],
                 request_id=str(ctx.get("request_id", ""))[:64],
                 user_id=_uuid(ctx.get("user_id")), task_id=_uuid(ctx.get("task_id")),
-                session_id=_uuid(ctx.get("session_id")), extra=extra or {},
+                session_id=_uuid(ctx.get("session_id")), course_id=_uuid(ctx.get("course_id")), extra=extra or {},
             ))
             await db.commit()
     except Exception:  # observability must never break the request
         log.exception("could not record event")
+
+
+async def activity(operation: str, *, ok: bool = True, error: str = "", **extra: Any) -> None:
+    """Something a person did (sign-in, a step checked, a submission, a grade, an elective request…), for the logs.
+    The person, task, session and course come from the request context; `extra` holds the details."""
+    await record("activity", operation, ok=ok, duration_ms=0, error=error,
+                 extra={k: (str(v) if isinstance(v, uuid.UUID) else v) for k, v in extra.items() if v is not None})
+
+
+async def prune(days: int) -> int:
+    """Delete events older than `days` (0 = keep everything). Returns how many went."""
+    if days <= 0:
+        return 0
+    from datetime import timedelta
+    from sqlalchemy import delete
+    try:
+        async with AsyncSessionLocal() as db:
+            r = await db.execute(delete(Event).where(Event.created_at < datetime.utcnow() - timedelta(days=days)))
+            await db.commit()
+            return r.rowcount or 0
+    except Exception:
+        log.exception("could not prune events")
+        return 0

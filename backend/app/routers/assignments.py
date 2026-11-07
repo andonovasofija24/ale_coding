@@ -405,6 +405,7 @@ async def generate_tasks(course_id: uuid.UUID, body: GenerateIn, db: AsyncSessio
                                             "en" if lang == "en" else "mk", for_student=False, previous=previous)
             previous = [t.title, *previous]
             out.append({"id": str(t.id), "title": t.title, "language": t.language, "kind": t.kind})
+            await observability.activity("tasks_generate", task_id=t.id, title=t.title, language=t.language, type=body.type)
     except agent_service.AIUnavailable:
         raise HTTPException(status_code=503, detail="AI is not configured")
     except HTTPException:
@@ -424,6 +425,8 @@ async def create_assignment(course_id: uuid.UUID, body: AssignmentIn, db: AsyncS
     await _save(db, a, body)
     await _draft_after_save(db, course, a, user, was_published=False, old_due=None)
     await db.commit()
+    await observability.activity("assignment_create", assignment_id=a.id, title=a.title, kind=a.kind,
+                                 tasks=len(body.tasks), published=a.published)
     return await assignment_out(db, a, user, True, datetime.utcnow(), await _groups_map(db, course_id))
 
 
@@ -452,14 +455,17 @@ async def update_assignment(assignment_id: uuid.UUID, body: AssignmentIn, db: As
     course = (await db.execute(select(Course).where(Course.id == a.course_id))).scalar_one()
     await _draft_after_save(db, course, a, user, was_published, old_due)
     await db.commit()
+    await observability.activity("assignment_update", assignment_id=a.id, title=a.title, kind=a.kind, published=a.published)
     return await assignment_out(db, a, user, True, datetime.utcnow(), await _groups_map(db, a.course_id))
 
 
 @router.delete("/assignments/{assignment_id}", status_code=204)
 async def delete_assignment(assignment_id: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     a, _ = await load_assignment(db, user, assignment_id, staff_only=True)
+    title = a.title
     await db.delete(a)
     await db.commit()
+    await observability.activity("assignment_delete", assignment_id=assignment_id, title=title)
 
 
 # ---------------------------------------------------------------------------
@@ -562,6 +568,9 @@ async def submit(assignment_id: uuid.UUID, task_id: uuid.UUID, body: SubmitIn, r
     await db.commit()
     submission_queue.enqueue(sub.id)
     sub = await submission_queue.wait_until_done(sub.id, settings.SUBMIT_WAIT_SECONDS)
+    await observability.activity("submit", assignment_id=a.id, title=a.title, status=sub.status,
+                                 passed=sub.passed if sub.status == "done" else None,
+                                 total=sub.total if sub.status == "done" else None, late=late or None)
     return await submission_result(a, sub, staff, at.points)
 
 
@@ -699,6 +708,7 @@ async def set_attendance(assignment_id: uuid.UUID, body: AttendanceIn, db: Async
             db.add(row)
         row.status, row.updated_by, row.updated_at = body.status, user.id, datetime.utcnow()
     await db.commit()
+    await observability.activity("attendance", assignment_id=a.id, student=body.user_id, status=body.status)
     return {"user_id": str(body.user_id), "status": body.status}
 
 
@@ -967,6 +977,8 @@ async def set_grade(assignment_id: uuid.UUID, body: GradeIn, db: AsyncSession = 
     g.comment = g.comment or ""
     g.graded_by, g.updated_at = user.id, datetime.utcnow()
     await db.commit()
+    await observability.activity("grade_set", assignment_id=a.id, task_id=body.task_id, student=body.user_id,
+                                 override=body.override, adjust=body.adjust, rubric=bool(body.rubric_scores) or None)
     best = (await db.execute(select(func.max(Submission.score)).where(
         Submission.assignment_id == a.id, Submission.task_id == body.task_id, Submission.user_id == body.user_id))).scalar_one()
     return {"final": exam.final_points(best, g, at.points, auto=task.kind == "code")}
@@ -990,6 +1002,7 @@ async def add_comment(submission_id: uuid.UUID, body: CommentIn, db: AsyncSessio
     c = CodeComment(submission_id=s.id, line=body.line, path=body.path.strip(), body=body.body.strip(), author_id=user.id)
     db.add(c)
     await db.commit()
+    await observability.activity("comment", submission_id=s.id, student=s.user_id, line=body.line)
     return {"id": str(c.id), "line": c.line, "path": c.path, "body": c.body, "author": user.name, "created_at": _iso(c.created_at)}
 
 
@@ -1017,6 +1030,7 @@ async def publish_grades(assignment_id: uuid.UUID, body: PublishIn, background: 
         if standing.category_of(a) in ("k1", "k2", "exam"):
             await emails.draft(db, course, "gradesheet", a, user, audience="staff")
     await db.commit()
+    await observability.activity("grades_publish", assignment_id=a.id, title=a.title, published=a.grades_published)
     if a.grades_published:  # a course linked to Moodle (LTI) gets the points in its gradebook too
         from app.routers.lti import push_grades_later
         background.add_task(push_grades_later, a.course_id, a.id)

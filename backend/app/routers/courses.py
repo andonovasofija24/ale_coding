@@ -27,7 +27,7 @@ from app.database import get_db
 from app.models.course import Assignment, Course, CourseGroup, CourseMember
 from app.models.user import User
 from app.routers import assignments
-from app.services import content
+from app.services import content, observability
 
 router = APIRouter(tags=["courses"], dependencies=[Depends(content.use_language)])
 
@@ -172,6 +172,8 @@ async def create_course(body: CourseIn, db: AsyncSession = Depends(get_db), user
                     description=body.description, join_code=_new_join_code(), created_by=user.id, subject_id=body.subject_id)
     db.add(course)
     await db.commit()  # the admin then puts the professor, assistants, лаборанти and students in it
+    observability.set_context(course_id=course.id)
+    await observability.activity("course_create", code=course.code, name=course.name)
     return _course_out(course, "teacher")
 
 
@@ -182,8 +184,10 @@ async def delete_course(course_id: uuid.UUID, db: AsyncSession = Depends(get_db)
     course = (await db.execute(select(Course).where(Course.id == course_id))).scalar_one_or_none()
     if course is None:
         raise HTTPException(status_code=404, detail="Course not found")
+    code, name = course.code, course.name
     await db.delete(course)
     await db.commit()
+    await observability.activity("course_delete", code=code, name=name)
 
 
 @router.get("/admin/courses")
@@ -356,6 +360,8 @@ async def add_members(course_id: uuid.UUID, body: MembersIn, db: AsyncSession = 
         db.add(CourseMember(course_id=course_id, user_id=u.id, role=body.role, group_id=body.group_id, role_locked=True))
         added.append(e)
     await db.commit()
+    await observability.activity("members_add", role=body.role, added=len(added), already=len(already) or None,
+                                 not_found=len(not_found) or None)
     return {"added": added, "already": already, "not_found": not_found}
 
 
@@ -385,6 +391,7 @@ async def update_member(course_id: uuid.UUID, user_id: uuid.UUID, body: MemberUp
     elif body.group_id:
         m.group_id = body.group_id
     await db.commit()
+    await observability.activity("member_update", member=user_id, role=body.role, unlock=body.unlock_role or None)
     return {"ok": True}
 
 
@@ -406,5 +413,6 @@ async def remove_member(course_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSessi
             raise HTTPException(status_code=409, detail="A course needs at least one teacher")
     await db.delete(m)
     await db.commit()
+    await observability.activity("member_remove", member=user_id)
 
 

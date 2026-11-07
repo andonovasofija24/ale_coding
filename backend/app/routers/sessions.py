@@ -222,6 +222,8 @@ async def start_session(
         db.add(_make_step(session.id, 0, next_data))
 
     await db.commit()
+    observability.set_context(session_id=session.id)
+    await observability.activity("session_start", solution_no=session.solution_no, approach=approach or None)
 
     result2 = await db.execute(
         select(Session).options(selectinload(Session.steps)).where(Session.id == session.id)
@@ -430,6 +432,10 @@ async def check_step(
         ) if written < MAX_SOLUTIONS else []
 
     await db.commit()
+    await observability.activity("step_check", ok=bool(eval_result["passed"]), step=current_step.step_number + 1,
+                                 completed=all_steps_completed or None)
+    if all_steps_completed:
+        await observability.activity("task_completed", solution_no=session.solution_no)
 
     return CheckStepResponse(
         alternatives=session.alternatives or [],

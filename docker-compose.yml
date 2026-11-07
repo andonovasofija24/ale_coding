@@ -100,6 +100,7 @@ services:
       # per-student limits (0 = no limit); admins are never limited
       - RATE_AI_PER_MINUTE=${RATE_AI_PER_MINUTE:-10}
       - RATE_AI_PER_DAY=${RATE_AI_PER_DAY:-300}
+      - LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-180}
       - RATE_TESTS_PER_MINUTE=${RATE_TESTS_PER_MINUTE:-20}
       # Exams: submissions are tested this many at a time (= RUNNER_WORKERS × code-runner replicas); the rest wait
       - SUBMISSION_WORKERS=${SUBMISSION_WORKERS:-${RUNNER_WORKERS:-4}}

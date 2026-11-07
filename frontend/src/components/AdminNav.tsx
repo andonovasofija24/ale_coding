@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { FileCode2, Cpu, Activity, Users, Mail, School, GraduationCap, ArrowLeftRight } from 'lucide-react'
+import { FileCode2, Cpu, Activity, Users, Mail, School, GraduationCap, ArrowLeftRight, ScrollText } from 'lucide-react'
 import { useLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -15,6 +15,7 @@ export default function AdminNav() {
       { to: '/admin/electives', label: t('adminNav.electives'), icon: <ArrowLeftRight size={15} />, end: true },
       { to: '/admin/users', label: t('adminNav.users'), icon: <Users size={15} />, end: true },
       { to: '/admin/ai', label: t('adminNav.ai'), icon: <Cpu size={15} />, end: true },
+      { to: '/admin/logs', label: t('adminNav.logs'), icon: <ScrollText size={15} />, end: true },
       { to: '/admin/monitoring', label: t('adminNav.monitoring'), icon: <Activity size={15} />, end: true },
       { to: '/admin/mail', label: t('adminNav.mail'), icon: <Mail size={15} />, end: true },
       { to: '/admin/lti', label: t('adminNav.lti'), icon: <School size={15} />, end: true },

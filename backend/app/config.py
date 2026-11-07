@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     # Per-student limits (0 = no limit). Admins are never limited.
     RATE_AI_PER_MINUTE: int = 10     # AI requests (step check, hint, explanation, ...) per minute
     RATE_AI_PER_DAY: int = 300       # AI provider calls per 24 hours
+    LOG_RETENTION_DAYS: int = 180    # logs (events) older than this are deleted at start-up; 0 = keep all
     RATE_TESTS_PER_MINUTE: int = 20  # "Run tests" per minute
     RATE_CHECKS_PER_MINUTE: int = 20  # editor compiler checks per minute (extra ones are skipped silently)
 
