@@ -9,7 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
-COURSE_ROLES = ("teacher", "assistant", "lab", "student")  # lab = лаборант: sees and grades labs
+COURSE_ROLES = ("teacher", "student")  # a teacher's rights: CourseMember.permissions (core/permissions.py)
 ASSIGNMENT_KINDS = ("lab", "homework", "practice", "exam")
 AI_MODES = ("full", "hints", "off")              # strictest wins when a task is in several active assignments
 RESULTS_VISIBILITY = ("full", "summary", "none")  # what a student sees right after "Submit"
@@ -57,7 +57,11 @@ class CourseMember(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     course_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("courses.id", ondelete="CASCADE"), nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    role: Mapped[str] = mapped_column(String(20), nullable=False, default="student")  # teacher | assistant | lab | student
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="student")  # teacher | student
+    # what this teacher may do in the subject (core/permissions.py); students have none
+    permissions: Mapped[list] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    # how a student got here: plan (their study plan: mandatory subjects + chosen electives) | admin | lti
+    source: Mapped[str] = mapped_column(String(10), nullable=False, default="admin", server_default="admin")
     # set by the admin in ALE: Moodle (LTI launches / roster) no longer changes it
     role_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
     group_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("course_groups.id", ondelete="SET NULL"), nullable=True)

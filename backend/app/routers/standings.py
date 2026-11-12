@@ -30,13 +30,13 @@ router = APIRouter(tags=["standing"])
 
 @router.get("/courses/{course_id}/grading")
 async def get_grading(course_id: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    course, _ = await access.load_course(db, user, course_id, access.COURSE_STAFF)
+    course, _ = await access.load_course(db, user, course_id, ("grades.view", "grades.rules"))
     return standing.scheme(course)
 
 
 @router.put("/courses/{course_id}/grading")
 async def set_grading(course_id: uuid.UUID, body: dict, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    course, _ = await access.load_course(db, user, course_id, access.GRADE_RULERS)   # the professor writes the rules
+    course, _ = await access.load_course(db, user, course_id, "grades.rules")
     try:
         course.grading = standing.validate(body)
     except (ValueError, TypeError) as e:
@@ -55,7 +55,7 @@ class FinalGradeIn(BaseModel):
 async def set_final_grade(course_id: uuid.UUID, body: FinalGradeIn, db: AsyncSession = Depends(get_db),
                           user: User = Depends(get_current_user)):
     """Only the professor enters the final grade (5–10); the standing's proposed grade is a suggestion."""
-    course, _ = await access.load_course(db, user, course_id, access.GRADE_RULERS)
+    course, _ = await access.load_course(db, user, course_id, "grades.final")
     m = (await db.execute(select(CourseMember).where(CourseMember.course_id == course.id, CourseMember.user_id == body.user_id,
                                                      CourseMember.role == "student"))).scalar_one_or_none()
     if m is None:
@@ -74,7 +74,7 @@ async def set_final_grade(course_id: uuid.UUID, body: FinalGradeIn, db: AsyncSes
 @router.get("/courses/{course_id}/standing")
 async def get_standing(course_id: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     course, role = await access.load_course(db, user, course_id)
-    if role == "lab":   # a лаборант works with the labs only, not the whole course's standing
+    if role == "teacher" and not role.can("grades.view"):   # e.g. a teacher with only the labs permissions
         raise HTTPException(status_code=403, detail="Course staff access required")
     st = await standing.compute(db, course, await gradebook_data(db, course.id))
     if role == "student":
@@ -86,7 +86,7 @@ async def get_standing(course_id: uuid.UUID, db: AsyncSession = Depends(get_db),
 @router.get("/courses/{course_id}/gradesheet.xlsx")
 async def download_gradesheet(course_id: uuid.UUID, group: Optional[str] = None, db: AsyncSession = Depends(get_db),
                               user: User = Depends(get_current_user)):
-    course, _ = await access.load_course(db, user, course_id, access.COURSE_STAFF)
+    course, _ = await access.load_course(db, user, course_id, "grades.view")
     data = await gradesheet.build(db, course, group)
     name = gradesheet.file_name(course)
     return Response(content=data, media_type=gradesheet.XLSX, headers={

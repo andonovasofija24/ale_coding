@@ -21,6 +21,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core import permissions as P
 from app.models.course import CourseMember
 from app.models.lti import LtiContext, LtiNonce, LtiPlatform, LtiToolKey, LtiUser
 from app.models.user import User
@@ -45,7 +46,6 @@ ROLE_GRADER = "http://purl.imsglobal.org/vocab/lis/v2/membership/Instructor#Grad
 ROLE_INST_ADMIN = "http://purl.imsglobal.org/vocab/lis/v2/institution/person#Administrator"
 ROLE_SYS_ADMIN = "http://purl.imsglobal.org/vocab/lis/v2/system/person#Administrator"
 
-COURSE_RANK = {"student": 0, "lab": 1, "assistant": 2, "teacher": 3}
 
 
 class LtiError(Exception):
@@ -174,19 +174,19 @@ async def use_nonce(db: AsyncSession, nonce: str) -> None:
 # ---------------------------------------------------------------- roles and people
 
 def course_role(roles: list[str]) -> Optional[str]:
-    """LTI roles → the ALE course role. None: no role we know (e.g. a mentor) — no membership.
-        Administrator (course, institution or system)          → teacher (професор)
-        Instructor#TeachingAssistant, Instructor, ContentDeveloper → assistant (асистент)
-        Instructor#Grader                                       → lab (лаборант)
-        Learner                                                 → student
-    Moodle sends only Instructor / Learner (+ Administrator): who is the professor and who a лаборант is set by the
-    ALE admin once per course, and that role is locked (see enrol). Instructor becomes an assistant, not a professor,
-    because Moodle sends it for assistants too — the professor's extra rights (final grades, grading rules) are given
-    on purpose, not by default."""
+    """LTI roles → who the person is in the subject: a permission template for a teacher, "student", or None (no
+    role we know, e.g. a mentor — no membership).
+        Administrator (course, institution or system)              → professor (all permissions)
+        Instructor#TeachingAssistant, Instructor, ContentDeveloper → assistant
+        Instructor#Grader                                           → lab (лаборант)
+        Learner                                                     → student
+    Moodle sends only Instructor / Learner (+ Administrator); the exact permissions of each teacher are set by the ALE
+    admin (then they are locked, see enrol). Instructor gets the assistant's permissions, not all of them, because
+    Moodle sends it for assistants too — final grades and grading rules are given on purpose, not by default."""
     roles = roles or []
     short = {r.rsplit("#", 1)[-1] for r in roles if r.startswith(ROLE_MEMBERSHIP)} | {r for r in roles if "#" not in r}
     if "Administrator" in short or ROLE_INST_ADMIN in roles or ROLE_SYS_ADMIN in roles:
-        return "teacher"
+        return "professor"
     if ROLE_GRADER in roles or "Grader" in short:
         return "lab"
     if ROLE_TA in roles or short & {"TeachingAssistant", "Instructor", "ContentDeveloper"}:
@@ -197,7 +197,7 @@ def course_role(roles: list[str]) -> Optional[str]:
 
 
 def is_instructor(roles: list[str]) -> bool:
-    return course_role(roles) in ("teacher", "assistant")
+    return course_role(roles) in ("professor", "assistant", "lab")
 
 
 def _placeholder_email(platform: LtiPlatform, sub: str) -> str:
@@ -223,16 +223,20 @@ async def user_for(db: AsyncSession, platform: LtiPlatform, sub: str, email: str
             # the e-mail belongs to someone else and this platform may not link by e-mail
             raise LtiError("email_taken", addr)
         user = User(email=addr, name=(name or addr.split("@")[0])[:255], password_hash="!lti",
-                    role="professor" if instructor else "student", auth_provider="lti")
+                    role="teacher" if instructor else "student", auth_provider="lti")
         db.add(user)
         await db.flush()
         created = True
         observability.log_event("lti_user_created", user_id=str(user.id))
     else:
         if instructor and user.role == "student":
-            user.role = "professor"  # a teacher in the faculty's Moodle
+            user.role = "teacher"  # a teacher in the faculty's Moodle
         if name and user.auth_provider == "lti" and user.name != name[:255]:
             user.name = name[:255]
+    if created or (instructor and user.role == "teacher"):
+        from app.services import spaces   # a new student: the spaces of their plan; a new teacher: none of those
+        await db.flush()
+        await spaces.sync_students(db, user.id)
     if link is None:
         db.add(LtiUser(platform_id=platform.id, sub=sub, user_id=user.id))
     elif link.user_id != user.id:
@@ -244,18 +248,22 @@ async def user_for(db: AsyncSession, platform: LtiPlatform, sub: str, email: str
 
 
 async def enrol(db: AsyncSession, course_id, user: User, role: Optional[str]) -> Optional[str]:
-    """Course membership from Moodle's role. Moodle can raise a role (student → assistant), never lower one, and
-    never changes a role the ALE admin set (locked). Returns the role the person has now."""
+    """Membership of the subject's space from Moodle's role (a template name or "student"). Moodle can raise what a
+    person may do (student → teacher, more permissions), never lower it, and never changes a membership the ALE admin
+    set (locked). Returns "teacher" / "student" — what the person is now."""
     if role is None:
         return None
+    perms = [] if role == "student" else P.template(role)
+    kind = "student" if role == "student" else "teacher"
     m = (await db.execute(select(CourseMember).where(CourseMember.course_id == course_id,
                                                      CourseMember.user_id == user.id))).scalar_one_or_none()
     if m is None:
-        db.add(CourseMember(course_id=course_id, user_id=user.id, role=role))
+        db.add(CourseMember(course_id=course_id, user_id=user.id, role=kind, permissions=perms, source="lti"))
         await db.flush()
-        return role
-    if not m.role_locked and COURSE_RANK.get(role, 0) > COURSE_RANK.get(m.role, 0):
-        m.role = role
+        return kind
+    if not m.role_locked and kind == "teacher":
+        m.permissions = P.clean(set(m.permissions or []) | set(perms))
+        m.role = "teacher"
     return m.role
 
 

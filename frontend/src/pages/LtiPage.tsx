@@ -93,7 +93,7 @@ function Setup({ s, onDone }: { s: string; onDone: (courseId: string) => void })
     ltiApi.setupInfo(s).then((x: SetupInfo) => {
       if (x.course_id) { onDone(x.course_id); return }
       setInfo(x)
-      const hit = x.courses.find((c) => c.suggested && !c.linked) ?? (admin ? undefined : x.courses.find((c) => !c.linked))
+      const hit = x.courses.find((c) => c.suggested && !c.linked) ?? (admin && x.subject ? undefined : x.courses.find((c) => !c.linked))
       if (hit) setChoice(hit.id)
     })
       .catch((e) => setErr(tError(e.response?.data?.detail, 'lti.failed')))
@@ -122,7 +122,7 @@ function Setup({ s, onDone }: { s: string; onDone: (courseId: string) => void })
       </div>
       <fieldset className="mt-6 space-y-2">
         <legend className="field-label">{t('lti.setup.choose')}</legend>
-        {admin && <Choice checked={choice === 'new'} onChange={() => setChoice('new')} icon={<Plus size={16} />}
+        {admin && info.subject && <Choice checked={choice === 'new'} onChange={() => setChoice('new')} icon={<Plus size={16} />}
           title={t('lti.setup.new')} text={info.subject ? t('lti.setup.newSubject', { subject: `${info.subject.code} — ${info.subject.name}` }) : t('lti.setup.newHint')} />}
         {!admin && free.length === 0 && <p className="card px-4 py-3 text-[13.5px] text-ink-soft">{t('lti.setup.askAdmin')}</p>}
         {free.map((c) => (

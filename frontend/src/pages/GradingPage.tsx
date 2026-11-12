@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { canKind } from '../lib/perms'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -83,9 +84,9 @@ export default function GradingPage() {
             <h1 className="text-3xl font-extrabold tracking-tight">{t('grading.title')}</h1>
             <p className="mt-1 text-sm text-ink-muted max-w-2xl">{t('grading.hint2')}</p>
           </div>
-          {a && a.my_role !== 'student' && <Link to={`/assignments/${assignmentId}/quick`} className="btn-secondary"><TableProperties size={15} /> {t('quick.open')}</Link>}
+          {a && canKind(a, a.kind, 'grade') && <Link to={`/assignments/${assignmentId}/quick`} className="btn-secondary"><TableProperties size={15} /> {t('quick.open')}</Link>}
           <Link to={`/assignments/${assignmentId}/similarity`} className="btn-secondary"><Copy size={15} /> {t('sim.open')}</Link>
-          {a && a.my_role !== 'student' && (
+          {a && canKind(a, a.kind, 'grade') && (
             <button onClick={publish} disabled={publishing} className={a.grades_published ? 'btn-secondary' : 'btn-primary'}>
               {publishing ? <Loader2 size={15} className="animate-spin" /> : a.grades_published ? <EyeOff size={15} /> : <Eye size={15} />}
               {a.grades_published ? t('grading.unpublish') : t('grading.publish')}
@@ -247,7 +248,7 @@ function ReviewPanel({ assignment, userId, taskId, onSavedNext }: { assignment: 
   if (isLoading || !r) return <div className="mt-8 flex justify-center text-ink-muted"><Loader2 className="animate-spin" /></div>
 
   const kind = r.task.kind
-  const canGrade = ['teacher', 'assistant', 'lab'].includes(assignment.my_role ?? '')   // professor, assistant and лаборант set points
+  const canGrade = canKind(assignment, assignment.kind, 'grade')   // the grade permission of this kind (labs / colloquia)
   const canComment = canGrade   // whoever enters the points also explains them on the code
   const rubric = r.task.rubric ?? []
   const best = kind === 'code'

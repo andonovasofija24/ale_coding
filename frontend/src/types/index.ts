@@ -1,5 +1,13 @@
-export type UserRole = 'student' | 'assistant' | 'professor' | 'admin'
-export type CourseRole = 'teacher' | 'assistant' | 'lab' | 'student'
+/** account types: student | teacher | admin ('assistant' / 'professor' are old names of a teacher account) */
+export type UserRole = 'student' | 'teacher' | 'admin' | 'assistant' | 'professor'
+/** a person's place in a subject's space; what a teacher may do there are their `permissions` */
+export type CourseRole = 'teacher' | 'student'
+export type Permission =
+  | 'labs.view' | 'labs.manage' | 'labs.grade'
+  | 'exams.view' | 'exams.manage' | 'exams.grade'
+  | 'grades.view' | 'grades.final' | 'grades.rules'
+  | 'people.view' | 'materials.manage' | 'mail.send' | 'activity.view' | 'practice.view'
+export type PermTemplate = 'professor' | 'assistant' | 'lab'
 
 export interface User {
   id: string
@@ -36,7 +44,7 @@ export interface Profile {
 /** Assistants, professors and admins author tasks. */
 export const isStaff = (u?: User | null) => !!u && u.role !== 'student'
 /** Professors and admins create courses. */
-export const canCreateCourses = (u?: User | null) => !!u && (u.role === 'professor' || u.role === 'admin')
+export const canCreateCourses = (_u?: User | null) => false   // sprint 21: every subject has its space; nothing to make
 
 export interface Course {
   id: string
@@ -46,6 +54,9 @@ export interface Course {
   description: string
   archived: boolean
   my_role: CourseRole
+  /** what I may do here (a teacher: what the admin ticked; the admin: everything; a student: none) */
+  permissions?: Permission[]
+  template?: PermTemplate | null
   students: number
   join_code: string | null
   join_enabled: boolean | null
@@ -123,6 +134,7 @@ export interface Assignment {
   course_name?: string
   course_code?: string
   my_role?: CourseRole
+  permissions?: Permission[]
   server_time?: string
   students_submitted?: number
 }
@@ -139,6 +151,11 @@ export interface CourseMember {
   email: string
   avatar_url?: string | null
   role: CourseRole
+  permissions?: Permission[]
+  template?: PermTemplate | null
+  /** how a student got here: plan (mandatory subject / chosen elective) | admin | lti */
+  source?: 'plan' | 'admin' | 'lti'
+  account?: UserRole
   group_id: string | null
   group_name: string | null
   role_locked?: boolean   // set by the admin: Moodle (LTI) doesn't change it
@@ -590,10 +607,10 @@ export interface Subject {
   color: string
   description: string
 }
-export interface SubjectCourse { id: string; code: string; name: string; semester: string; my_role: CourseRole }
+export interface SubjectCourse { id: string; code: string; name: string; semester: string; my_role: CourseRole; permissions?: Permission[]; template?: PermTemplate | null; source?: string | null }
 export interface SubjectSummary extends Subject { tasks: number; done: number; generated: number; courses: SubjectCourse[]; my_semester?: number | null }
 export interface SubjectTask { id: string; title: string; language: string; created_at: string; status: 'in_progress' | 'completed' | null; current_step: number | null; is_public: boolean }
-export interface SubjectDetail extends Subject { tasks: SubjectTask[]; generated: SubjectTask[]; courses: SubjectCourse[]; can_practice: boolean; staff?: boolean }
+export interface SubjectDetail extends Subject { tasks: SubjectTask[]; generated: SubjectTask[]; courses: SubjectCourse[]; can_practice: boolean; staff?: boolean; space_id?: string | null; member?: boolean }
 
 /** The grading tutor's suggestion (nothing is saved until the grader saves the points). */
 export interface GradingSuggestion {

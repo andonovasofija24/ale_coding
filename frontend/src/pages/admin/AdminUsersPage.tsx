@@ -8,9 +8,9 @@ import { AdminUser, UserRole } from '../../types'
 import AppHeader from '../../components/AppHeader'
 import AdminNav from '../../components/AdminNav'
 
-const ROLES: UserRole[] = ['student', 'assistant', 'professor', 'admin']
+const ROLES: UserRole[] = ['student', 'teacher', 'admin']
 
-/** Admin: every account, with its platform role (student / assistant / professor / admin). */
+/** Admin: every account and its type (student / teacher / admin). What a teacher may do is ticked per subject. */
 export default function AdminUsersPage() {
   const { t, tError, formatDate } = useLanguage()
   const { user: me } = useAuth()

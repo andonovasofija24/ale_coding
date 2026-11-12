@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { permLabel } from '../components/PermissionsEditor'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeftRight, ArrowRight, CalendarClock, ChevronRight, GraduationCap, Lock, Plus, Search, Send, Sparkles, Users, X } from 'lucide-react'
@@ -162,11 +163,11 @@ export default function CoursesPage() {
         </section>
 
         {/* ---- my courses (put in them by the admin) ---- */}
-        {active.length > 0 && (
+        {!admin && active.length > 0 && (
           <section className="mt-8" aria-labelledby="my-courses">
             <h2 id="my-courses" className="text-[13px] font-bold text-ink-muted mb-2">{t('home.myCourses')}</h2>
             <ul className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 snap-x">
-              {active.map((c) => <CourseChip key={c.id} c={c} />)}
+              {[...active].sort((a, b) => (a.next_due ?? '9').localeCompare(b.next_due ?? '9')).map((c) => <CourseChip key={c.id} c={c} />)}
             </ul>
           </section>
         )}
@@ -397,7 +398,7 @@ export default function CoursesPage() {
         <Link to={`/courses/${c.id}`} className="group card p-4 h-full flex flex-col border-2 hover:border-ink transition-colors">
           <div className="flex items-center gap-2">
             <span className="font-mono text-[11px] font-bold bg-ink text-white rounded px-1.5 py-0.5 truncate max-w-[9rem]">{c.code}</span>
-            <span className="ml-auto text-[11px] font-semibold text-ink-muted">{t(`courseRole.${c.my_role}` as any)}</span>
+            <span className="ml-auto text-[11px] font-semibold text-ink-muted">{staff ? permLabel(c.template, t, c.permissions) : t('courseRole.student')}</span>
           </div>
           <p className="mt-2 font-bold leading-snug group-hover:text-cobalt line-clamp-2">{c.name}</p>
           <p className="mt-auto pt-2 text-[12.5px] text-ink-muted flex items-center gap-1.5">

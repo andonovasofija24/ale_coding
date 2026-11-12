@@ -46,7 +46,7 @@ async def _material(db: AsyncSession, user: User, material_id, staff_only: bool 
     m = (await db.execute(select(CourseMaterial).where(CourseMaterial.id == material_id))).scalar_one_or_none()
     if m is None:
         raise HTTPException(status_code=404, detail="Material not found")
-    _, role = await access.load_course(db, user, m.course_id, access.COURSE_STAFF if staff_only else None)
+    _, role = await access.load_course(db, user, m.course_id, "materials.manage" if staff_only else None)
     if role not in access.COURSE_STAFF and not m.published:
         raise HTTPException(status_code=404, detail="Material not found")
     return m, role
@@ -67,7 +67,7 @@ async def list_materials(course_id: uuid.UUID, db: AsyncSession = Depends(get_db
 async def upload_material(course_id: uuid.UUID, file: UploadFile = File(...), title: str = Form(..., min_length=1, max_length=300),
                           section: str = Form("lecture"), week: Optional[int] = Form(None), published: bool = Form(True),
                           db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    await access.load_course(db, user, course_id, access.COURSE_STAFF)
+    await access.load_course(db, user, course_id, "materials.manage")
     if section not in MATERIAL_SECTIONS:
         raise HTTPException(status_code=422, detail="Unknown section")
     if week is not None and not 0 <= week <= 30:

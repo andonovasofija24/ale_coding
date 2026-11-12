@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { can } from '../lib/perms'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDown, ArrowLeft, ArrowUp, Bot, BotOff, Lightbulb, Loader2, Plus, Save, Search, Sparkles, Timer, Trash2, X } from 'lucide-react'
@@ -30,7 +31,9 @@ export default function AssignmentFormPage() {
   })
   // the course's task bank (a лаборант has no access to the admin bank)
   const { data: bank = [] } = useQuery<TaskListItem[]>({ queryKey: ['task-bank', courseId], queryFn: () => assignmentsApi.taskBank(courseId!), enabled: !!courseId })
-  const isLab = course?.my_role === 'lab'   // a лаборант: only labs / practice, counted as labs
+  // what this teacher may make here: labs / practice (labs.manage), colloquia / homework (exams.manage)
+  const isLab = !!course && !can(course, 'exams.manage')   // only labs / practice, counted as labs
+  const kinds = ([...(can(course, 'labs.manage') ? ['lab', 'practice'] : []), ...(can(course, 'exams.manage') ? ['homework', 'exam'] : [])]) as AssignmentKind[]
 
   const [title, setTitle] = useState('')
   const [kind, setKind] = useState<AssignmentKind>('lab')
@@ -60,6 +63,8 @@ export default function AssignmentFormPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  // a new assignment starts as the first kind this teacher may make
+  useEffect(() => { if (!isEdit && kinds.length && !kinds.includes(kind)) setKind(kinds[0]) }, [course]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!existing) return
     setTitle(existing.title); setKind(existing.kind); setDescription(existing.description)
@@ -149,7 +154,7 @@ export default function AssignmentFormPage() {
               <div>
                 <label htmlFor="a-kind" className="field-label">{t('assign.kind')}</label>
                 <select id="a-kind" className="input" value={kind} onChange={(e) => setKind(e.target.value as AssignmentKind)}>
-                  {((isLab ? ['lab', 'practice'] : ['lab', 'homework', 'practice', 'exam']) as AssignmentKind[]).map((k) => <option key={k} value={k}>{t(`akind.${k}` as any)}</option>)}
+                  {(kinds.length ? kinds : (['lab'] as AssignmentKind[])).map((k) => <option key={k} value={k}>{t(`akind.${k}` as any)}</option>)}
                 </select>
               </div>
             </div>

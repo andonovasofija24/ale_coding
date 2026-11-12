@@ -1,4 +1,6 @@
 import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { can } from '../lib/perms'
+import { permLabel } from '../components/PermissionsEditor'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Award, BookOpen, ChevronRight, ClipboardList, Loader2, Mail, Megaphone, Settings, Table2, Users, ScrollText } from 'lucide-react'
 import { coursesApi } from '../services/api'
@@ -34,7 +36,8 @@ export default function CoursePage() {
   })
   // staff: a short tour of the course page the first time (a лаборант gets their own)
   const role = course?.my_role
-  usePageTour(role === 'lab' ? 'courseLab' : role && role !== 'student' ? 'courseStaff' : null, !!course)
+  const onlyLabs = !!course && role === 'teacher' && !can(course, 'exams.view') && !can(course, 'grades.view')
+  usePageTour(onlyLabs ? 'courseLab' : role === 'teacher' ? 'courseStaff' : null, !!course)
 
   if (isLoading) return <Shell><div className="flex justify-center py-20 text-ink-muted"><Loader2 className="animate-spin" /></div></Shell>
   if (isError || !course) return <Shell><p className="py-20 text-center text-ink-muted">{t('courses.notFound')}</p></Shell>
@@ -44,17 +47,14 @@ export default function CoursePage() {
   const used = [...new Set(course.assignments.flatMap((x) => x.tasks.map((y) => y.language)))]
   const courseLangs = used.length ? used : LANG_ORDER
   const tab = (params.get('tab') as Tab) || 'assignments'
-  const lab = course.my_role === 'lab'  // лаборант: labs to grade and the materials, nothing else
-  const tabs: { key: Tab; label: string; icon: JSX.Element }[] = lab ? [
+  // a teacher sees the tabs their permissions in this subject open (the admin: all of them)
+  const tabs: { key: Tab; label: string; icon: JSX.Element }[] = staff ? [
     { key: 'assignments', label: t('course.tabAssignments'), icon: <ClipboardList size={15} /> },
+    ...(can(course, 'people.view') ? [{ key: 'students' as Tab, label: t('course.tabStudents'), icon: <Users size={15} /> }] : []),
+    ...(can(course, 'grades.view') ? [{ key: 'grades' as Tab, label: t('course.tabGrades'), icon: <Table2 size={15} /> }] : []),
     { key: 'materials', label: t('course.tabMaterials'), icon: <BookOpen size={15} /> },
-  ] : staff ? [
-    { key: 'assignments', label: t('course.tabAssignments'), icon: <ClipboardList size={15} /> },
-    { key: 'students', label: t('course.tabStudents'), icon: <Users size={15} /> },
-    { key: 'grades', label: t('course.tabGrades'), icon: <Table2 size={15} /> },
-    { key: 'materials', label: t('course.tabMaterials'), icon: <BookOpen size={15} /> },
-    { key: 'mail', label: t('course.tabMail'), icon: <Mail size={15} /> },
-    { key: 'logs', label: t('course.tabLogs'), icon: <ScrollText size={15} /> },
+    ...(can(course, 'mail.send') ? [{ key: 'mail' as Tab, label: t('course.tabMail'), icon: <Mail size={15} /> }] : []),
+    ...(can(course, 'activity.view') ? [{ key: 'logs' as Tab, label: t('course.tabLogs'), icon: <ScrollText size={15} /> }] : []),
     ...(user?.role === 'admin' ? [{ key: 'settings' as Tab, label: t('course.tabSettings'), icon: <Settings size={15} /> }] : []),
   ] : [
     { key: 'assignments', label: t('course.tabAssignments'), icon: <ClipboardList size={15} /> },
@@ -68,6 +68,7 @@ export default function CoursePage() {
       <Link to="/courses" className="inline-flex items-center gap-1.5 text-sm text-ink-muted hover:text-ink">
         <ArrowLeft size={15} /> {t('courses.all')}
       </Link>
+      {course.subject_id && <Link to={`/subjects/${course.subject_id}`} className="ml-4 inline-flex items-center gap-1.5 text-sm text-ink-muted hover:text-ink">{t('space.toSubject')}</Link>}
       <header className="mt-3 relative overflow-hidden rounded-2xl bg-ink text-white px-6 py-7 sm:px-8 sm:py-9">
         <CodeBackdrop langs={courseLangs} columns={4}
           className="[mask-image:linear-gradient(to_right,transparent_35%,black_85%)] sm:[mask-image:linear-gradient(to_right,transparent,black_45%,black)] opacity-90" />
@@ -79,7 +80,7 @@ export default function CoursePage() {
           </div>
           <h1 className="mt-2 text-3xl sm:text-4xl font-extrabold tracking-tight max-w-2xl">{course.name}</h1>
           {!staff && course.my_group && <p className="mt-1.5 text-sm text-white/70">{t('course.myGroup', { group: course.my_group })}</p>}
-          {staff && <p className="mt-1.5 text-sm text-white/70">{(course.students === 1 ? t('courses.studentOne') : t('courses.studentsN', { n: course.students }))} · {t(`courseRole.${course.my_role}` as any)}</p>}
+          {staff && <p className="mt-1.5 text-sm text-white/70">{(course.students === 1 ? t('courses.studentOne') : t('courses.studentsN', { n: course.students }))} · {permLabel(course.template, t)}</p>}
           {courseLangs.length > 0 && courseLangs.length < LANG_ORDER.length && (
             <div className="mt-3 flex flex-wrap gap-1.5">{courseLangs.map((l) => <LangChip key={l} lang={l} />)}</div>
           )}
@@ -98,11 +99,11 @@ export default function CoursePage() {
           </nav>
           <div className="mt-6">
             {tab === 'assignments' && (staff ? <AssignmentsTab course={course} /> : <StudentAssignments course={course} />)}
-            {tab === 'students' && staff && <StudentsTab course={course} />}
-            {tab === 'grades' && staff && <GradebookTab course={course} />}
+            {tab === 'students' && can(course, 'people.view') && <StudentsTab course={course} />}
+            {tab === 'grades' && can(course, 'grades.view') && <GradebookTab course={course} />}
             {tab === 'materials' && <MaterialsTab course={course} />}
-            {tab === 'mail' && staff && <MailTab course={course} />}
-            {tab === 'logs' && staff && !lab && <><p className="mb-4 text-sm text-ink-muted max-w-3xl">{t('log.hintCourse')}</p><LogView mode="course" courseId={course.id} /></>}
+            {tab === 'mail' && can(course, 'mail.send') && <MailTab course={course} />}
+            {tab === 'logs' && can(course, 'activity.view') && <><p className="mb-4 text-sm text-ink-muted max-w-3xl">{t('log.hintCourse')}</p><LogView mode="course" courseId={course.id} /></>}
             {tab === 'settings' && user?.role === 'admin' && <SettingsTab course={course} />}
             {tab === 'notices' && !staff && <Announcements courseId={course.id} />}
             {tab === 'standing' && !staff && <MyStanding courseId={course.id} />}

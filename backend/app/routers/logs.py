@@ -181,7 +181,7 @@ async def course_logs(course_id: uuid.UUID, kind: Optional[str] = None, operatio
                       db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     """What happened in the course (assignments, submissions, grades, its AI calls and test runs), and its
     students' own practice in the course's subject — for the professor and the assistants."""
-    course, _ = await access.load_course(db, user, course_id, access.COURSE_STAFF)
+    course, _ = await access.load_course(db, user, course_id, "activity.view")
     students = select(CourseMember.user_id).where(CourseMember.course_id == course.id)
     scope = Event.course_id == course.id
     if course.subject_id:

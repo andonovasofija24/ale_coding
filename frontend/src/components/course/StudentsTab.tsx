@@ -1,21 +1,27 @@
 import { Link } from 'react-router-dom'
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Info, Loader2, Lock, Plus, Trash2, UserMinus, UserPlus } from 'lucide-react'
+import { Info, KeyRound, Loader2, Lock, Plus, Trash2, UserMinus, UserPlus } from 'lucide-react'
 import { coursesApi } from '../../services/api'
 import Avatar from '../Avatar'
 import { useLanguage } from '../../i18n/LanguageContext'
 import { useAuth } from '../../contexts/AuthContext'
-import { CourseDetail, CourseMember, CourseRole } from '../../types'
+import { CourseDetail, CourseMember, CourseRole, Permission } from '../../types'
+import PermissionsEditor, { permLabel } from '../PermissionsEditor'
+import { TEMPLATES } from '../../lib/perms'
 import MoodleCard from './MoodleCard'
 
-/** The people of a course. The admin puts people in (by e-mail, with their role), makes groups and changes roles;
- *  the professor and assistants see the list. There is no joining with a code. */
+/** The people of a subject's space. Students of the subject's study plan are here on their own (mandatory subject or
+ *  a chosen elective); the admin adds others and the teachers, and ticks what each teacher may do here. Teachers with
+ *  "people.view" see the list. */
 export default function StudentsTab({ course }: { course: CourseDetail }) {
   const { t, tError } = useLanguage()
   const { user } = useAuth()
   const qc = useQueryClient()
   const teacher = course.my_role === 'teacher'
+  const [addPerms, setAddPerms] = useState<Permission[]>([...TEMPLATES.assistant])
+  const [editing, setEditing] = useState<string | null>(null)
+  const [editPerms, setEditPerms] = useState<Permission[]>([])
   const admin = user?.role === 'admin'   // only the admin manages people and groups
   const { data: members = [], isLoading } = useQuery<CourseMember[]>({
     queryKey: ['members', course.id], queryFn: () => coursesApi.members(course.id),
@@ -47,7 +53,7 @@ export default function StudentsTab({ course }: { course: CourseDetail }) {
     if (!list.length) return
     setAdding(true); setError(''); setAddResult(null)
     try {
-      setAddResult(await coursesApi.addMembers(course.id, { emails: list, role: addRole, group_id: addGroup || null }))
+      setAddResult(await coursesApi.addMembers(course.id, addRole === 'teacher' ? { emails: list, role: 'teacher', permissions: addPerms } : { emails: list, role: 'student', group_id: addGroup || null }))
       setEmails('')
       refresh()
     } catch (err: any) {
@@ -116,11 +122,9 @@ export default function StudentsTab({ course }: { course: CourseDetail }) {
             placeholder="ana.petrovska@students.finki.ukim.mk, marko@students.finki.ukim.mk" />
           <select value={addRole} onChange={(e) => setAddRole(e.target.value as CourseRole)} className="input" aria-label={t('course.role')}>
             <option value="student">{t('courseRole.student')}</option>
-            <option value="lab">{t('courseRole.lab')}</option>
-            <option value="assistant">{t('courseRole.assistant')}</option>
-            <option value="teacher">{t('courseRole.teacher')}</option>
+            <option value="teacher">{t('perm.teacher')}</option>
           </select>
-          <select value={addGroup} onChange={(e) => setAddGroup(e.target.value)} className="input" aria-label={t('course.group')}>
+          <select value={addGroup} onChange={(e) => setAddGroup(e.target.value)} className="input" aria-label={t('course.group')} disabled={addRole === 'teacher'}>
             <option value="">{t('course.noGroup')}</option>
             {course.groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
           </select>
@@ -128,6 +132,12 @@ export default function StudentsTab({ course }: { course: CourseDetail }) {
             {adding && <Loader2 size={15} className="animate-spin" />} {t('course.add')}
           </button>
         </form>
+        {addRole === 'teacher' && (
+          <div className="mt-4">
+            <p className="mb-2 text-[13px] text-ink-muted">{t('perm.addHint')}</p>
+            <PermissionsEditor value={addPerms} onChange={setAddPerms} />
+          </div>
+        )}
         {addResult && (
           <div className="mt-3 text-[13px] space-y-1">
             {addResult.added.length > 0 && <p className="text-ok">{t('course.addedN', { n: addResult.added.length })}</p>}
@@ -166,7 +176,8 @@ export default function StudentsTab({ course }: { course: CourseDetail }) {
               </thead>
               <tbody className="divide-y divide-line-soft">
                 {[...staff, ...students].map((m) => (
-                  <tr key={m.user_id}>
+                  <Fragment key={m.user_id}>
+                  <tr>
                     <td className="px-4 py-2.5">
                       <Link to={`/users/${m.user_id}`} className="group flex items-center gap-2.5">
                         <Avatar name={m.name} url={m.avatar_url} size={30} />
@@ -177,16 +188,19 @@ export default function StudentsTab({ course }: { course: CourseDetail }) {
                       </Link>
                     </td>
                     <td className="px-4 py-2.5">
-                      {admin && m.user_id !== user?.id ? (
-                        <select value={m.role} className="input h-8 w-auto text-[13px]"
-                          onChange={(e) => act(() => coursesApi.updateMember(course.id, m.user_id, { role: e.target.value }))}>
-                          <option value="student">{t('courseRole.student')}</option>
-                          <option value="lab">{t('courseRole.lab')}</option>
-                          <option value="assistant">{t('courseRole.assistant')}</option>
-                          <option value="teacher">{t('courseRole.teacher')}</option>
-                        </select>
+                      {m.role === 'teacher' ? (
+                        admin ? (
+                          <button type="button" className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-cobalt hover:underline"
+                            aria-expanded={editing === m.user_id}
+                            onClick={() => { setEditing(editing === m.user_id ? null : m.user_id); setEditPerms(m.permissions ?? []) }}>
+                            <KeyRound size={13} /> {permLabel(m.template, t, m.permissions)}
+                          </button>
+                        ) : <span className="text-[13px]">{permLabel(m.template, t, m.permissions)}</span>
                       ) : (
-                        <span className="text-[13px]">{t(`courseRole.${m.role}` as any)}</span>
+                        <span className="text-[13px]">{t('courseRole.student')}
+                          {m.source && <span className={`ml-1.5 text-[11px] font-semibold rounded-full px-1.5 py-0.5 ${
+                            m.source === 'plan' ? 'bg-ok-soft text-ok' : 'bg-line-soft text-ink-muted'}`}>{t(`member.source.${m.source}` as any)}</span>}
+                        </span>
                       )}
                       {m.role_locked && (admin ? (
                         <button type="button" className="ml-1.5 align-middle text-ink-muted hover:text-ink" title={t('course.roleLockedUnlock')}
@@ -213,6 +227,23 @@ export default function StudentsTab({ course }: { course: CourseDetail }) {
                       )}
                     </td>
                   </tr>
+                  {editing === m.user_id && admin && (
+                    <tr className="bg-paper">
+                      <td colSpan={4} className="px-4 py-4">
+                        <PermissionsEditor value={editPerms} onChange={setEditPerms} />
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button className="btn-primary btn-sm" onClick={() => act(() => coursesApi.updateMember(course.id, m.user_id, { permissions: editPerms })).then(() => setEditing(null))}>
+                            {t('perm.save')}
+                          </button>
+                          <button className="btn-secondary btn-sm" onClick={() => act(() => coursesApi.updateMember(course.id, m.user_id, { role: 'student' })).then(() => setEditing(null))}>
+                            {t('perm.makeStudent')}
+                          </button>
+                          <button className="btn-ghost btn-sm" onClick={() => setEditing(null)}>{t('mat.cancel')}</button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
                 {students.length === 0 && staff.length === 0 && (
                   <tr><td colSpan={4} className="px-4 py-8 text-center text-ink-muted">{t('course.noMembers')}</td></tr>

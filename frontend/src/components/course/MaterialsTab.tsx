@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { can } from '../../lib/perms'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { BookOpen, Download, Eye, EyeOff, FileText, Loader2, Pencil, Presentation, Trash2, Upload, X } from 'lucide-react'
 import { materialsApi } from '../../services/api'
@@ -15,7 +16,7 @@ const isSlides = (m: CourseMaterial) => /presentation|powerpoint/.test(m.file_ty
  *  Presentations and documents are shown as PDF in the page (converted on upload). */
 export default function MaterialsTab({ course }: { course: CourseDetail }) {
   const { t } = useLanguage()
-  const staff = course.my_role !== 'student'
+  const staff = can(course, 'materials.manage')   // upload / edit / publish the materials
   const { data, isLoading } = useQuery<{ can_convert: boolean; materials: CourseMaterial[] }>({
     queryKey: ['materials', course.id], queryFn: () => materialsApi.list(course.id),
   })

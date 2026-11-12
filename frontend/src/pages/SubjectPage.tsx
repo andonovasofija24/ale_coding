@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { permLabel } from '../components/PermissionsEditor'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, BookOpen, CheckCircle2, ChevronRight, CircleDot, ExternalLink, GraduationCap, KeyRound, Loader2, Sparkles, Users, Wand2, X } from 'lucide-react'
@@ -10,11 +11,13 @@ import SubjectIcon from '../components/SubjectIcon'
 import TaskRows from '../components/TaskRows'
 import { langClass, langInfo } from '../lib/languages'
 import EmptyState, { IconTile } from '../components/EmptyState'
+import { useAuth } from '../contexts/AuthContext'
 
 /** One subject: its practice tasks (by language), my courses of it, and practice with AI (on my own key). */
 export default function SubjectPage() {
   const { subjectId } = useParams<{ subjectId: string }>()
   const { t } = useLanguage()
+  const { user } = useAuth()
   const qc = useQueryClient()
   const { data: s, isLoading } = useQuery<SubjectDetail>({ queryKey: ['subject', subjectId], queryFn: () => subjectsApi.get(subjectId!) })
   const [filter, setFilter] = useState('all')
@@ -97,20 +100,23 @@ export default function SubjectPage() {
 
         <aside className="space-y-4">
           <PracticeCard s={s} />
+          {/* the subject's space: labs, colloquia, points, materials — for its students (their plan) and teachers */}
           <section className="card p-4">
-            <h2 className="font-bold flex items-center gap-2.5"><IconTile size="sm" tone="ok"><GraduationCap size={15} /></IconTile> {t('subj.myCourses')}</h2>
-            {s.courses.length === 0 ? <p className="mt-1.5 text-[13px] text-ink-muted">{t('subj.noCourses')}</p> : (
-              <ul className="mt-2 space-y-1.5">
-                {s.courses.map((c) => (
-                  <li key={c.id}>
-                    <Link to={`/courses/${c.id}`} className="group flex items-center gap-2 rounded-lg border border-line px-3 py-2 hover:border-ink-faint">
-                      <span className="font-mono text-[11px] font-bold bg-ink text-white rounded px-1.5 py-0.5">{c.code}</span>
-                      <span className="min-w-0 flex-1 text-[13.5px] font-semibold truncate group-hover:text-cobalt">{c.semester || c.name}</span>
-                      <ChevronRight size={15} className="text-ink-faint" />
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+            <h2 className="font-bold flex items-center gap-2.5"><IconTile size="sm" tone="ok"><GraduationCap size={15} /></IconTile> {t('space.title')}</h2>
+            {s.courses.length === 0 || !s.space_id ? (
+              <p className="mt-1.5 text-[13px] text-ink-muted">{user?.role === 'student' ? t('space.notInPlan') : t('space.notTeaching')}</p>
+            ) : (
+              <>
+                <p className="mt-1.5 text-[13px] text-ink-muted">
+                  {s.courses[0].my_role === 'student'
+                    ? (s.courses[0].source === 'plan' ? t('space.inPlan') : t('space.added'))
+                    : t('space.youTeach', { what: permLabel(s.courses[0].template, t, s.courses[0].permissions) })}
+                </p>
+                <Link to={`/courses/${s.space_id}`} className="mt-2.5 group flex items-center gap-2 rounded-lg border border-line px-3 py-2 hover:border-ink-faint">
+                  <span className="min-w-0 flex-1 text-[13.5px] font-semibold truncate group-hover:text-cobalt">{t('space.open')}</span>
+                  <ChevronRight size={15} className="text-ink-faint" />
+                </Link>
+              </>
             )}
           </section>
         </aside>

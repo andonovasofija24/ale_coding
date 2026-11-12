@@ -121,7 +121,7 @@ async def draft(db: AsyncSession, course: Course, kind: str, a: Assignment | Non
 async def recipients(db: AsyncSession, course: Course, audience: str, group_id=None, user_ids=None,
                      reminders: bool = False) -> list[tuple]:
     """[(user_id, address, language)]. Students get their group's teaching language (else the course's)."""
-    roles = ("teacher", "assistant") if audience == "staff" else ("student",)
+    roles = ("teacher",) if audience == "staff" else ("student",)
     q = (select(User.id, User.email, CourseGroup.language, UserProfile.email_reminders)
          .join(CourseMember, CourseMember.user_id == User.id)
          .outerjoin(CourseGroup, CourseGroup.id == CourseMember.group_id)

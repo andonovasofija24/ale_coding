@@ -27,7 +27,7 @@ from app.database import get_db
 from app.models.electives import ElectiveChoice, ElectivePlan, ElectiveRequest
 from app.models.task import Subject
 from app.models.user import User
-from app.services import content, observability
+from app.services import content, observability, spaces
 
 router = APIRouter(tags=["electives"])
 
@@ -125,6 +125,8 @@ async def choose_elective(body: ChoiceIn, db: AsyncSession = Depends(get_db), us
         db.add(ElectiveChoice(user_id=user.id, subject_id=body.subject_id, semester=body.semester))
     else:
         c.semester = body.semester
+    await db.flush()
+    await spaces.sync_students(db, user.id)    # the elective's space: its labs and practice tasks
     await db.commit()
     await observability.activity("elective_choose", subject_id=body.subject_id, semester=body.semester)
     return await _my_plan(db, user, lang)
@@ -137,6 +139,8 @@ async def drop_elective(subject_id: uuid.UUID, db: AsyncSession = Depends(get_db
     c = (await _choices(db, user.id)).get(subject_id)
     if c is not None:
         await db.delete(c)
+        await db.flush()
+        await spaces.sync_students(db, user.id)
         await db.commit()
         await observability.activity("elective_drop", subject_id=subject_id)
     return await _my_plan(db, user, lang)
@@ -248,6 +252,8 @@ async def approve_request(request_id: uuid.UUID, body: DecisionIn, db: AsyncSess
         await db.flush()
         db.add(ElectiveChoice(user_id=r.user_id, subject_id=r.add_subject_id, semester=r.add_semester))
     r.status, r.admin_note, r.decided_at, r.decided_by = "approved", body.note.strip(), datetime.utcnow(), admin.id
+    await db.flush()
+    await spaces.sync_students(db, r.user_id)
     await db.commit()
     await observability.activity("elective_approve", request_id=r.id, student=r.user_id)
     return await _request_out(db, r, lang, with_user=True)

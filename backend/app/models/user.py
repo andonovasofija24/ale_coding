@@ -15,7 +15,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     # Platform role. Professors (and admins) create courses; assistants and professors also author tasks.
-    role: Mapped[str] = mapped_column(Enum("student", "admin", "assistant", "professor", name="user_role"), default="student")
+    role: Mapped[str] = mapped_column(Enum("student", "admin", "assistant", "professor", "teacher", name="user_role"), default="student")
     auth_provider: Mapped[str] = mapped_column(String(20), default="password")  # "password" | "microsoft"
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     # Profile picture: bumped on every upload (part of the image URL, so browsers never show an old one). None = no picture.

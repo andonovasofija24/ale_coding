@@ -1241,8 +1241,12 @@ async def seed():
             print(f"Created task: {task.title}")
 
         await seed_subjects(db)
+        from app.services import spaces
+        await db.flush()
+        made = await spaces.ensure_all(db)      # every subject has its space (labs, points, materials…)
+        await spaces.sync_students(db)
         await db.commit()
-        print("Seeding complete.")
+        print(f"Seeding complete ({made} new subject spaces).")
 
 
 if __name__ == "__main__":

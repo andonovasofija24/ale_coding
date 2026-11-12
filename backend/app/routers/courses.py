@@ -1,12 +1,14 @@
 """
-Courses: members and groups.
+Subject spaces ("courses" in the code): every subject has one, made automatically (services/spaces.py) — nobody
+makes or deletes them by hand. Members: students (from their study plan, the admin or Moodle) and teachers with
+the permissions the admin gave them (core/permissions.py).
 
 Routes
-  /courses                       my courses; create (professors)
-  /courses/join                  join with a code (students)
-  /courses/{id}                  details (+ assignments I can see); edit; new join code
-  /courses/{id}/groups           groups
-  /courses/{id}/members          staff: list, add by e-mail, change role/group, remove
+  /courses                       the spaces I am in (the admin: all)
+  /courses/{id}                  details (+ the assignments I can see, my permissions); settings (admin)
+  /courses/{id}/groups           groups (admin)
+  /courses/{id}/members          list (people.view); add by e-mail, permissions / group, remove (admin)
+  /admin/courses                 admin: every space with its teachers and their permissions
 
 Assignments, submissions, exams, grading and the gradebook live in routers/assignments.py.
 """
@@ -27,7 +29,8 @@ from app.database import get_db
 from app.models.course import Assignment, Course, CourseGroup, CourseMember
 from app.models.user import User
 from app.routers import assignments
-from app.services import content, observability
+from app.core import permissions as P
+from app.services import content, observability, spaces
 
 router = APIRouter(tags=["courses"], dependencies=[Depends(content.use_language)])
 
@@ -71,8 +74,7 @@ class CourseUpdate(BaseModel):
     language: Optional[Literal["mk", "en"]] = None
     reminders_enabled: Optional[bool] = None
     reminder_hours: Optional[int] = Field(None, ge=1, le=168)
-    subject_id: Optional[uuid.UUID] = None
-    clear_subject: bool = False
+    # (the subject of a space never changes: every subject has its own one)
 
 
 class JoinIn(BaseModel):
@@ -84,14 +86,29 @@ class GroupIn(BaseModel):
     language: Optional[Literal["mk", "en"]] = None  # teaching language of the group (None = the course's)
 
 
+Template = Literal["professor", "assistant", "lab"]
+
+
 class MembersIn(BaseModel):
     emails: list[str] = Field(min_length=1, max_length=1000)
-    role: Literal["student", "lab", "assistant", "teacher"] = "student"
+    # student | teacher; the old role names ("lab", "assistant") are a teacher with that template's permissions
+    role: Literal["student", "teacher", "professor", "assistant", "lab"] = "student"
+    permissions: Optional[list[str]] = None   # a teacher's permissions (default: the template, or all for "teacher")
     group_id: Optional[uuid.UUID] = None
 
 
+def _who(role: str, perms: Optional[list[str]]) -> tuple[str, list[str]]:
+    """(role, permissions) of a membership from what the admin sent."""
+    if role == "student":
+        return "student", []
+    if perms is not None:
+        return "teacher", P.clean(perms)
+    return "teacher", P.template(role if role != "teacher" else "professor")
+
+
 class MemberUpdate(BaseModel):
-    role: Optional[Literal["student", "lab", "assistant", "teacher"]] = None
+    role: Optional[Literal["student", "teacher", "professor", "assistant", "lab"]] = None
+    permissions: Optional[list[str]] = None
     group_id: Optional[uuid.UUID] = None
     clear_group: bool = False
     unlock_role: bool = False   # let Moodle (LTI) set this person's role again
@@ -101,11 +118,13 @@ class MemberUpdate(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _course_out(c: Course, role: str, students: int = 0) -> dict:
+def _course_out(c: Course, role, students: int = 0) -> dict:
     staff = role in access.COURSE_STAFF
+    perms = sorted(getattr(role, "perms", ())) if staff else []
     return {
         "id": str(c.id), "code": c.code, "name": c.name, "semester": c.semester, "description": c.description,
-        "archived": c.archived, "my_role": role, "students": students,
+        "archived": c.archived, "my_role": str(role), "students": students,
+        "permissions": [p for p in P.ALL if p in perms], "template": P.template_of(perms) if staff else None,
         "join_code": c.join_code if staff else None, "join_enabled": c.join_enabled if staff else None,
         "language": c.language, "reminders_enabled": c.reminders_enabled, "reminder_hours": c.reminder_hours,
         "subject_id": str(c.subject_id) if c.subject_id else None,
@@ -141,12 +160,12 @@ async def _groups_map(db: AsyncSession, course_id) -> dict:
 @router.get("/courses")
 async def my_courses(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     if user.role == "admin":
-        rows = [(c, "teacher") for c in (await db.execute(select(Course).order_by(Course.created_at.desc()))).scalars()]
+        rows = [(c, access.Role("teacher", P.ALL)) for c in (await db.execute(select(Course).order_by(Course.name))).scalars()]
     else:
-        rows = (await db.execute(
-            select(Course, CourseMember.role).join(CourseMember, CourseMember.course_id == Course.id)
-            .where(CourseMember.user_id == user.id).order_by(Course.created_at.desc())
-        )).all()
+        rows = [(c, access.Role("teacher", m.permissions or ()) if m.role == "teacher" else access.Role("student"))
+                for c, m in (await db.execute(
+                    select(Course, CourseMember).join(CourseMember, CourseMember.course_id == Course.id)
+                    .where(CourseMember.user_id == user.id).order_by(Course.name))).all()]
     counts = await _student_counts(db, [c.id for c, _ in rows])
     out = [_course_out(c, role, counts.get(str(c.id), 0)) for c, role in rows]
 
@@ -165,48 +184,34 @@ async def my_courses(db: AsyncSession = Depends(get_db), user: User = Depends(ge
     return out
 
 
-@router.post("/courses", status_code=201)
-async def create_course(body: CourseIn, db: AsyncSession = Depends(get_db), user: User = Depends(access.get_course_creator)):
-    await _check_subject(db, body.subject_id)
-    course = Course(code=body.code.strip(), name=body.name.strip(), semester=body.semester.strip(),
-                    description=body.description, join_code=_new_join_code(), created_by=user.id, subject_id=body.subject_id)
-    db.add(course)
-    await db.commit()  # the admin then puts the professor, assistants, лаборанти and students in it
-    observability.set_context(course_id=course.id)
-    await observability.activity("course_create", code=course.code, name=course.name)
-    return _course_out(course, "teacher")
+@router.post("/courses", status_code=410)
+async def create_course(user: User = Depends(get_current_user)):
+    """There are no courses to make: every subject has its own space."""
+    raise HTTPException(status_code=410, detail="Every subject has its own space; courses are not made by hand")
 
 
-@router.delete("/courses/{course_id}", status_code=204)
-async def delete_course(course_id: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    """Admin: delete a course with everything in it (assignments, submissions, grades, mail, materials)."""
-    access.require_admin(user)
-    course = (await db.execute(select(Course).where(Course.id == course_id))).scalar_one_or_none()
-    if course is None:
-        raise HTTPException(status_code=404, detail="Course not found")
-    code, name = course.code, course.name
-    await db.delete(course)
-    await db.commit()
-    await observability.activity("course_delete", code=code, name=name)
+@router.delete("/courses/{course_id}", status_code=410)
+async def delete_course(course_id: uuid.UUID, user: User = Depends(get_current_user)):
+    raise HTTPException(status_code=410, detail="A subject's space goes only with its subject")
 
 
 @router.get("/admin/courses")
 async def admin_courses(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    """Admin: every course with its subject and its people by role."""
+    """Admin: every subject's space with its teachers (and their permissions) and how many students it has."""
     access.require_admin(user)
-    courses = (await db.execute(select(Course).order_by(Course.archived, Course.created_at.desc()))).scalars().all()
-    people = (await db.execute(select(CourseMember.course_id, CourseMember.role, User.name)
-                               .join(User, User.id == CourseMember.user_id))).all()
-    by: dict = {}
-    for cid, role, name in people:
-        by.setdefault(str(cid), {}).setdefault(role, []).append(name)
-    out = []
-    for c in courses:
-        p = by.get(str(c.id), {})
-        out.append({**_course_out(c, "teacher", len(p.get("student", []))),
-                    "teachers": sorted(p.get("teacher", [])), "assistants": sorted(p.get("assistant", [])),
-                    "labs": sorted(p.get("lab", []))})
-    return out
+    courses = (await db.execute(select(Course).order_by(Course.name))).scalars().all()
+    people = (await db.execute(select(CourseMember, User).join(User, User.id == CourseMember.user_id))).all()
+    teachers: dict = {}
+    students: dict = {}
+    for m, u in people:
+        if m.role == "teacher":
+            teachers.setdefault(str(m.course_id), []).append({
+                "user_id": str(u.id), "name": u.name, "email": u.email, "permissions": P.clean(m.permissions),
+                "template": P.template_of(P.clean(m.permissions))})
+        else:
+            students[str(m.course_id)] = students.get(str(m.course_id), 0) + 1
+    return [{**_course_out(c, access.Role("teacher", P.ALL), students.get(str(c.id), 0)),
+             "teachers": sorted(teachers.get(str(c.id), []), key=lambda x: x["name"])} for c in courses]
 
 
 @router.post("/courses/join")
@@ -230,8 +235,7 @@ async def course_detail(course_id: uuid.UUID, db: AsyncSession = Depends(get_db)
     course, role = await access.load_course(db, user, course_id)
     groups = await _groups_map(db, course.id)
 
-    out_assignments = await assignments.assignments_for_course(db, course, user, role in access.COURSE_GRADERS,
-                                                               lab_only=role == "lab")
+    out_assignments = await assignments.assignments_for_course(db, course, user, role in access.COURSE_GRADERS, role=role)
 
     my_group = None
     if role == "student":
@@ -252,10 +256,7 @@ async def update_course(course_id: uuid.UUID, body: CourseUpdate, db: AsyncSessi
                         user: User = Depends(get_current_user)):
     access.require_admin(user)
     course, role = await access.load_course(db, user, course_id, ("teacher",))
-    await _check_subject(db, body.subject_id)
-    if body.clear_subject:
-        course.subject_id = None
-    for k, v in body.model_dump(exclude_none=True, exclude={"clear_subject"}).items():
+    for k, v in body.model_dump(exclude_none=True).items():
         setattr(course, k, v.strip() if isinstance(v, str) and k != "description" else v)
     await db.commit()
     return _course_out(course, role)
@@ -314,13 +315,16 @@ async def delete_group(course_id: uuid.UUID, group_id: uuid.UUID, db: AsyncSessi
 
 @router.get("/courses/{course_id}/members")
 async def list_members(course_id: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    await access.load_course(db, user, course_id, access.COURSE_STAFF)
+    await access.load_course(db, user, course_id, "people.view")
     groups = await _groups_map(db, course_id)
     rows = (await db.execute(
         select(CourseMember, User).join(User, User.id == CourseMember.user_id)
         .where(CourseMember.course_id == course_id).order_by(CourseMember.role.desc(), User.name)
     )).all()
     return [{"user_id": str(u.id), "name": u.name, "email": u.email, "role": m.role,
+             "permissions": P.clean(m.permissions) if m.role == "teacher" else [],
+             "template": P.template_of(P.clean(m.permissions)) if m.role == "teacher" else None,
+             "source": m.source, "account": u.role,
              "avatar_url": avatar_url(u.id, u.avatar_version),
              "group_id": str(m.group_id) if m.group_id else None,
              "group_name": groups.get(str(m.group_id)) if m.group_id else None,
@@ -334,6 +338,7 @@ async def add_members(course_id: uuid.UUID, body: MembersIn, db: AsyncSession = 
     so those students can join with the course code once they have an account."""
     access.require_admin(user)
     _, role = await access.load_course(db, user, course_id, access.COURSE_STAFF)
+    new_role, perms = _who(body.role, body.permissions)
 
     if body.group_id and not (await db.execute(select(CourseGroup.id).where(
             CourseGroup.id == body.group_id, CourseGroup.course_id == course_id))).first():
@@ -352,15 +357,19 @@ async def add_members(course_id: uuid.UUID, body: MembersIn, db: AsyncSession = 
             already.append(e)
             if body.group_id:
                 m.group_id = body.group_id
-            if m.role != body.role and m.role != "teacher":   # e.g. someone Moodle brought in gets their real role
-                m.role = body.role
+            if new_role == "teacher" or m.role == "student":   # e.g. someone Moodle brought in gets their real place
+                m.role, m.permissions = new_role, perms
+                if new_role == "student":
+                    m.source = "admin"
             m.role_locked = True
             continue
-        # a role the admin gives is locked: Moodle (LTI) doesn't change it
-        db.add(CourseMember(course_id=course_id, user_id=u.id, role=body.role, group_id=body.group_id, role_locked=True))
+        # what the admin gives is locked: Moodle (LTI) doesn't change it
+        db.add(CourseMember(course_id=course_id, user_id=u.id, role=new_role, permissions=perms, group_id=body.group_id,
+                            role_locked=True, source="admin"))
         added.append(e)
     await db.commit()
-    await observability.activity("members_add", role=body.role, added=len(added), already=len(already) or None,
+    await observability.activity("members_add", role=new_role, template=P.template_of(perms) if perms else None,
+                                 added=len(added), already=len(already) or None,
                                  not_found=len(not_found) or None)
     return {"added": added, "already": already, "not_found": not_found}
 
@@ -374,15 +383,13 @@ async def update_member(course_id: uuid.UUID, user_id: uuid.UUID, body: MemberUp
         CourseMember.course_id == course_id, CourseMember.user_id == user_id))).scalar_one_or_none()
     if m is None:
         raise HTTPException(status_code=404, detail="Member not found")
-    if body.role and body.role != m.role:
-        if role != "teacher":
-            raise HTTPException(status_code=403, detail="Only the course teacher can change roles")
-        if m.role == "teacher" and body.role != "teacher":
-            teachers = (await db.execute(select(func.count()).where(
-                CourseMember.course_id == course_id, CourseMember.role == "teacher"))).scalar_one()
-            if teachers <= 1:
-                raise HTTPException(status_code=409, detail="A course needs at least one teacher")
-        m.role = body.role
+    if body.role is not None or body.permissions is not None:
+        new_role, perms = _who(body.role or m.role, body.permissions)
+        if body.role is None and body.permissions is not None:
+            new_role = "teacher"
+        m.role, m.permissions = new_role, perms
+        if new_role == "student":
+            m.source = "admin"
         m.role_locked = True
     if body.unlock_role:
         m.role_locked = False
@@ -391,7 +398,9 @@ async def update_member(course_id: uuid.UUID, user_id: uuid.UUID, body: MemberUp
     elif body.group_id:
         m.group_id = body.group_id
     await db.commit()
-    await observability.activity("member_update", member=user_id, role=body.role, unlock=body.unlock_role or None)
+    await observability.activity("member_update", member=user_id, role=m.role,
+                                 permissions=len(m.permissions or []) if m.role == "teacher" else None,
+                                 unlock=body.unlock_role or None)
     return {"ok": True}
 
 
@@ -404,13 +413,6 @@ async def remove_member(course_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSessi
         CourseMember.course_id == course_id, CourseMember.user_id == user_id))).scalar_one_or_none()
     if m is None:
         return
-    if m.role != "student" and role != "teacher":
-        raise HTTPException(status_code=403, detail="Only the course teacher can remove staff")
-    if m.role == "teacher":
-        teachers = (await db.execute(select(func.count()).where(
-            CourseMember.course_id == course_id, CourseMember.role == "teacher"))).scalar_one()
-        if teachers <= 1:
-            raise HTTPException(status_code=409, detail="A course needs at least one teacher")
     await db.delete(m)
     await db.commit()
     await observability.activity("member_remove", member=user_id)

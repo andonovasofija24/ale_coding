@@ -1,24 +1,15 @@
 """
 Who may do what.
 
-Platform roles (users.role):
-    student    — learns; sees public tasks and the assignments of courses they are enrolled in
-    assistant  — also authors tasks; manages the courses where they are staff
-    professor  — also creates courses
-    admin      — everything, including AI settings, monitoring and user roles
+Accounts (users.role): student | teacher | admin. (The old "assistant" / "professor" accounts are teachers.)
+    student — practises in every subject; in the subjects of their studies (all the mandatory ones and the electives
+              they chose) also gets what the teachers put there: practice, labs, colloquia, their points
+    teacher — uses the task bank; in a subject does what the admin allowed them (core/permissions.py)
+    admin   — everything: the catalogue, people and their permissions, AI, logs, LTI
 
-Course roles (course_members.role): teacher | assistant | lab | student. Admins act as a teacher in every course.
-    The admin alone makes courses and puts people in them (with their role); there is no joining with a code.
-    teacher (професор) — everything in the course: also the grading rules and the final grades (5–10), seeing the
-                         points of the labs and the colloquia
-    assistant          — makes and edits the assignments (mainly the labs, also colloquia / exams and homework), sets
-                         their type, reviews solutions, comments, enters points and attendance, publishes the points;
-                         sees the gradebook. No grading rules, no final grades.
-    lab (лаборант)     — the labs (and practice) only: makes and edits them when needed and sets their type (lab or
-                         practice), looks at the submissions, enters points (with the grading tutor's help) and
-                         attendance, comments, publishes the lab points. Nothing else in the course.
-    student            — practises in every subject; solves the labs and everything else only in the courses they
-                         are enrolled in
+Every subject has one space (a `courses` row, never made by hand) with its assignments, points, materials and mail.
+Its members (course_members) are students (from their study plan, from the admin or from Moodle) and teachers with
+their permissions. Admins act as a teacher with every permission everywhere.
 """
 from datetime import datetime
 
@@ -26,47 +17,85 @@ from fastapi import Depends, HTTPException
 from sqlalchemy import select, and_, or_, exists
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import permissions as P
 from app.core.deps import get_current_user
 from app.models.course import Course, CourseMember, Assignment, AssignmentTask
 from app.models.task import Task
 from app.models.user import User
 from app.services import observability
 
-STAFF_ROLES = ("assistant", "professor", "admin")
-COURSE_CREATORS = ("admin",)
-COURSE_STAFF = ("teacher", "assistant")            # the whole course: people, gradebook, mail, materials, delete
-COURSE_GRADERS = ("teacher", "assistant", "lab")   # assignments they may see (a лаборант only labs / practice)
-ASSIGNMENT_AUTHORS = COURSE_GRADERS                # make and edit assignments (a лаборант only labs / practice)
-GRADE_SETTERS = COURSE_GRADERS                     # points, attendance, comments, publishing the points
-GRADE_RULERS = ("teacher",)                        # the grading rules and the final grades
-LAB_KINDS = ("lab", "practice")                    # what a лаборант sees and makes
-LAB_CATEGORIES = (None, "labs", "none")           # where a лаборант's assignment may count
+STAFF_ROLES = ("teacher", "assistant", "professor", "admin")   # accounts that use the task bank
+COURSE_STAFF = ("teacher",)          # any teacher of the subject (finer checks: permissions)
+COURSE_GRADERS = COURSE_STAFF
+LAB_KINDS = P.LAB_KINDS
+LAB_CATEGORIES = P.LAB_CATEGORIES
 
 
-def lab_may_see(role: str, kind: str) -> bool:
-    return role != "lab" or kind in LAB_KINDS
+class Role(str):
+    """The person's place in a subject's space: "teacher" or "student" — with the teacher's permissions."""
+    perms: frozenset
+
+    def __new__(cls, value: str, perms=()):
+        o = super().__new__(cls, value)
+        o.perms = frozenset(perms)
+        return o
+
+    def can(self, perm: str) -> bool:
+        return perm in self.perms
+
+    def can_kind(self, kind: str, action: str) -> bool:
+        return P.can_kind(self.perms, kind, action)
+
+    def any(self, *perms: str) -> bool:
+        return bool(self.perms & set(perms))
+
+
+def lab_may_see(role, kind: str) -> bool:
+    """Students see what is open to them (checked elsewhere); a teacher sees an assignment's kind only with the
+    view permission of its group (labs / colloquia & homework)."""
+    return role != "teacher" or role.can_kind(kind, "view")
 
 
 def is_staff(user: User) -> bool:
     return user.role in STAFF_ROLES
 
 
+def is_admin(user: User) -> bool:
+    return user.role == "admin"
+
+
 async def get_current_staff(user: User = Depends(get_current_user)) -> User:
-    """Task authors: assistants, professors, admins."""
+    """Task authors: teachers and admins."""
     if not is_staff(user):
         raise HTTPException(status_code=403, detail="Staff access required")
     return user
 
 
 def require_admin(user: User) -> None:
-    """Courses and the people in them are managed by the administrator only."""
+    """Subjects, people and their permissions are managed by the administrator only."""
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Only the administrator manages courses and people")
 
 
-def require_role(role: str, allowed: tuple[str, ...], what: str = "Not allowed for your role in this course") -> None:
-    if role not in allowed:
+def require_role(role, allowed, what: str = "Not allowed for your role in this course") -> None:
+    """`allowed`: roles ("teacher",) or a permission ("labs.grade") / permissions (any of them)."""
+    if not _ok(role, allowed):
         raise HTTPException(status_code=403, detail=what)
+
+
+def require_kind(role, kind: str, action: str, what: str = "You don't have this permission in this subject") -> None:
+    if role != "teacher" or not role.can_kind(kind, action):
+        raise HTTPException(status_code=403, detail=what)
+
+
+def _ok(role, need) -> bool:
+    if need is None:
+        return True
+    if isinstance(need, str):
+        need = (need,)
+    if all(n in ("teacher", "student") for n in need):
+        return role in need
+    return role == "teacher" and role.any(*need)
 
 
 async def get_course_creator(user: User = Depends(get_current_user)) -> User:
@@ -80,21 +109,23 @@ async def membership(db: AsyncSession, user: User, course_id) -> CourseMember | 
     )).scalar_one_or_none()
 
 
-async def course_role(db: AsyncSession, user: User, course_id) -> str | None:
+async def course_role(db: AsyncSession, user: User, course_id) -> Role | None:
     if user.role == "admin":
-        return "teacher"
+        return Role("teacher", P.ALL)
     m = await membership(db, user, course_id)
-    return m.role if m else None
+    if m is None:
+        return None
+    return Role("teacher", m.permissions or ()) if m.role == "teacher" else Role("student")
 
 
-async def load_course(db: AsyncSession, user: User, course_id, roles: tuple[str, ...] | None = None) -> tuple[Course, str]:
-    """The course and the user's role in it. 404 if it doesn't exist or the user isn't in it; 403 if the role
-    is not one of `roles`."""
+async def load_course(db: AsyncSession, user: User, course_id, roles=None) -> tuple[Course, Role]:
+    """The space and the user's place in it. 404 if it doesn't exist or the user isn't in it; 403 without `roles`
+    (("teacher",) or a permission / permissions — any of them)."""
     course = (await db.execute(select(Course).where(Course.id == course_id))).scalar_one_or_none()
     role = await course_role(db, user, course_id) if course else None
     if course is None or role is None:
         raise HTTPException(status_code=404, detail="Course not found")
-    if roles is not None and role not in roles:
+    if not _ok(role, roles):
         raise HTTPException(status_code=403, detail="Course staff access required")
     observability.set_context(course_id=course.id)   # events of this request belong to the course (logs)
     return course, role
@@ -115,20 +146,21 @@ def visible_to_student_clause(user: User, now: datetime):
             CourseMember.course_id == Assignment.course_id,
             CourseMember.user_id == user.id,
             or_(Assignment.group_id.is_(None), Assignment.group_id == CourseMember.group_id,
-                CourseMember.role.in_(COURSE_GRADERS)),
+                CourseMember.role == "teacher"),
         ),
     )
 
 
-async def subject_staff(db: AsyncSession, user: User, subject_id) -> bool:
-    """Platform staff, or the professor / an assistant / a лаборант of a course of this subject: they see everything
-    in the subject — also what the students practise there with their own AI key."""
-    if is_staff(user):
+async def subject_staff(db: AsyncSession, user: User, subject_id, perm: str = "practice.view") -> bool:
+    """The admin, or a teacher of this subject with `perm` (by default: seeing what the students practise there
+    with their own AI key)."""
+    if is_admin(user):
         return True
     if subject_id is None:
         return False
-    return (await db.execute(select(CourseMember.id).join(Course, Course.id == CourseMember.course_id).where(
-        CourseMember.user_id == user.id, CourseMember.role.in_(COURSE_GRADERS), Course.subject_id == subject_id))).first() is not None
+    m = (await db.execute(select(CourseMember).join(Course, Course.id == CourseMember.course_id).where(
+        CourseMember.user_id == user.id, CourseMember.role == "teacher", Course.subject_id == subject_id))).scalars().first()
+    return bool(m and perm in (m.permissions or []))
 
 
 async def can_access_task(db: AsyncSession, user: User, task: Task) -> bool:

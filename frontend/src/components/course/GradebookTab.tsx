@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { can } from '../../lib/perms'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Download, Loader2 } from 'lucide-react'
@@ -50,7 +51,7 @@ export default function GradebookTab({ course }: { course: CourseDetail }) {
         </button>
       </div>
 
-      {view === 'standing' ? <><StandingTable course={course} group={group} /><div className="mt-6"><GradingSchemeCard courseId={course.id} readOnly={course.my_role !== 'teacher'} /></div></> : data.students.length === 0 || data.assignments.length === 0 ? (
+      {view === 'standing' ? <><StandingTable course={course} group={group} /><div className="mt-6"><GradingSchemeCard courseId={course.id} readOnly={!can(course, 'grades.rules')} /></div></> : data.students.length === 0 || data.assignments.length === 0 ? (
         <div className="mt-6 card px-6 py-12 text-center text-ink-muted">
           {data.assignments.length === 0 ? t('grades.noAssignments') : t('grades.noStudents')}
         </div>

@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { ChevronRight, Plus, Users } from 'lucide-react'
 import { useLanguage } from '../../i18n/LanguageContext'
 import { CourseDetail } from '../../types'
+import { can } from '../../lib/perms'
 import { Deadline, KindBadge, StatusBadge, fmt } from './bits'
 
 /** Staff: every assignment of the course (drafts too), with a link to create a new one. */
@@ -10,8 +11,8 @@ export default function AssignmentsTab({ course }: { course: CourseDetail }) {
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-ink-muted max-w-xl">{course.my_role === 'lab' ? t('course.assignmentsHintLab') : t('course.assignmentsHint')}</p>
-        {<Link to={`/courses/${course.id}/assignments/new`} className="btn-primary" data-tour="assign-new"><Plus size={15} /> {t('assign.new')}</Link>}
+        <p className="text-sm text-ink-muted max-w-xl">{!can(course, 'exams.view') ? t('course.assignmentsHintLab') : t('course.assignmentsHint')}</p>
+        {(can(course, 'labs.manage') || can(course, 'exams.manage')) && <Link to={`/courses/${course.id}/assignments/new`} className="btn-primary" data-tour="assign-new"><Plus size={15} /> {t('assign.new')}</Link>}
       </div>
       {course.assignments.length === 0 ? (
         <div className="mt-6 card px-6 py-12 text-center text-ink-muted">{t('course.noAssignmentsStaff')}</div>

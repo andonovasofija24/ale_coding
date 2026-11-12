@@ -34,6 +34,9 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
         role="student",
     )
     db.add(user)
+    await db.flush()
+    from app.services import spaces
+    await spaces.sync_students(db, user.id)    # the spaces of the mandatory subjects
     await db.commit()
     await db.refresh(user)
     observability.set_context(user_id=user.id)

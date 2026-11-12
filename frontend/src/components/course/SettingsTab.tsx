@@ -1,18 +1,16 @@
 import { useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { BellRing, Loader2, Save } from 'lucide-react'
 import GradingSchemeCard from './GradingSchemeCard'
-import { coursesApi, subjectsApi } from '../../services/api'
+import { coursesApi } from '../../services/api'
 import { useLanguage } from '../../i18n/LanguageContext'
-import { CourseDetail, SubjectSummary } from '../../types'
+import { CourseDetail } from '../../types'
 
-/** Teacher: course name / code / semester / description; archive at the end of the semester. */
+/** Admin: the space's name / code / school year / description (its subject never changes); archive. */
 export default function SettingsTab({ course }: { course: CourseDetail }) {
   const { t, tError } = useLanguage()
   const qc = useQueryClient()
   const [f, setF] = useState({ code: course.code, name: course.name, semester: course.semester, description: course.description })
-  const [subjectId, setSubjectId] = useState(course.subject_id ?? '')
-  const { data: subj } = useQuery<{ subjects: SubjectSummary[] }>({ queryKey: ['subjects'], queryFn: subjectsApi.list })
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
@@ -30,15 +28,7 @@ export default function SettingsTab({ course }: { course: CourseDetail }) {
 
   return (
     <div className="max-w-2xl space-y-6">
-      <form className="card p-5 sm:p-6 space-y-4" onSubmit={(e) => { e.preventDefault(); save({ ...f, ...(subjectId ? { subject_id: subjectId } : { clear_subject: true }) }) }}>
-        <div>
-          <label htmlFor="s-subj" className="field-label">{t('subj.ofCourse')}</label>
-          <select id="s-subj" className="input" value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
-            <option value="">{t('subj.none')}</option>
-            {(subj?.subjects ?? []).map((x) => <option key={x.id} value={x.id}>{x.code} — {x.name}</option>)}
-          </select>
-          <p className="field-hint">{t('subj.ofCourseHint')}</p>
-        </div>
+      <form className="card p-5 sm:p-6 space-y-4" onSubmit={(e) => { e.preventDefault(); save(f) }}>
         <div className="grid sm:grid-cols-[9rem_minmax(0,1fr)] gap-3">
           <div>
             <label htmlFor="s-code" className="field-label">{t('courses.code')}</label>

@@ -31,6 +31,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import access
+from app.core import permissions as P
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.models.course import (ATTENDANCE, Assignment, AssignmentAttempt, AssignmentTask, Attendance, CodeComment,
@@ -291,14 +292,16 @@ async def assignment_out(db: AsyncSession, a: Assignment, user: User, staff: boo
     return out
 
 
-async def assignments_for_course(db: AsyncSession, course: Course, user: User, staff: bool, lab_only: bool = False) -> list[dict]:
+async def assignments_for_course(db: AsyncSession, course: Course, user: User, staff: bool, role=None) -> list[dict]:
+    """A student: what is open to them. A teacher: the kinds they may see (labs / colloquia & homework)."""
     groups = await _groups_map(db, course.id)
     now = datetime.utcnow()
     q = select(Assignment).where(Assignment.course_id == course.id)
     if not staff:
         q = q.where(access.visible_to_student_clause(user, now))
-    elif lab_only:
-        q = q.where(Assignment.kind.in_(access.LAB_KINDS))
+    elif role is not None:
+        kinds = [k for k in ("lab", "practice", "homework", "exam") if role.can_kind(k, "view")]
+        q = q.where(Assignment.kind.in_(kinds))
     assignments = (await db.execute(
         q.order_by(Assignment.due_at.is_(None), Assignment.due_at, Assignment.created_at))).scalars().all()
     return [await assignment_out(db, a, user, staff, now, groups) for a in assignments]
@@ -354,17 +357,23 @@ async def _draft_after_save(db: AsyncSession, course, a: Assignment, user: User,
         await emails.draft(db, course, "deadline", a, user)
 
 
-def _lab_limits(role: str, body: "AssignmentIn") -> None:
-    """A лаборант makes and edits only labs and practice, counted (if at all) as labs."""
-    if role == "lab" and (body.kind not in access.LAB_KINDS or body.category not in access.LAB_CATEGORIES or body.exam):
-        raise HTTPException(status_code=403, detail="A лаборант makes only labs and practice")
+MANAGERS = ("labs.manage", "exams.manage")
+
+
+def _lab_limits(role, body: "AssignmentIn") -> None:
+    """Making / editing an assignment needs the "manage" permission of its kind's group (labs: lab, practice;
+    colloquia: exam, homework). With only the labs permissions it counts (if at all) as labs, and is not a timed exam."""
+    if not role.can_kind(body.kind, "manage"):
+        raise HTTPException(status_code=403, detail="You may not make this kind of assignment in this subject")
+    if not role.can("exams.manage") and (body.category not in access.LAB_CATEGORIES or body.exam):
+        raise HTTPException(status_code=403, detail="You may not make this kind of assignment in this subject")
 
 
 @router.get("/courses/{course_id}/task-bank", response_model=list[TaskListItem])
 async def course_task_bank(course_id: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user),
                            lang: Optional[str] = Depends(content.reader_language)):
     """The task bank for whoever makes the course's assignments (a лаборант has no access to the admin bank)."""
-    await access.load_course(db, user, course_id, access.ASSIGNMENT_AUTHORS)
+    await access.load_course(db, user, course_id, MANAGERS)
     rows = (await db.execute(select(Task).where(Task.generated_for.is_(None)).order_by(Task.created_at))).scalars().all()
     return [TaskListItem.model_validate(t).model_copy(update={"title": content.title(t, lang)}) for t in rows]
 
@@ -386,7 +395,7 @@ async def generate_tasks(course_id: uuid.UUID, body: GenerateIn, db: AsyncSessio
     from app.models.task import Subject
     from app.schemas.task import LANGUAGES
     from app.services import agent_service, practice
-    course, _ = await access.load_course(db, user, course_id, access.ASSIGNMENT_AUTHORS)
+    course, _ = await access.load_course(db, user, course_id, MANAGERS)
     subject = (await db.execute(select(Subject).where(Subject.id == course.subject_id))).scalar_one_or_none() if course.subject_id else None
     if subject is None:
         raise HTTPException(status_code=422, detail="The course has no subject")
@@ -417,7 +426,7 @@ async def generate_tasks(course_id: uuid.UUID, body: GenerateIn, db: AsyncSessio
 @router.post("/courses/{course_id}/assignments", status_code=201)
 async def create_assignment(course_id: uuid.UUID, body: AssignmentIn, db: AsyncSession = Depends(get_db),
                             user: User = Depends(get_current_user)):
-    course, role = await access.load_course(db, user, course_id, access.ASSIGNMENT_AUTHORS)
+    course, role = await access.load_course(db, user, course_id, MANAGERS)
     _lab_limits(role, body)
     a = Assignment(course_id=course_id, title=body.title, created_by=user.id)
     db.add(a)
@@ -437,7 +446,8 @@ async def assignment_detail(assignment_id: uuid.UUID, request: Request, db: Asyn
     course = (await db.execute(select(Course).where(Course.id == a.course_id))).scalar_one()
     staff = role in access.COURSE_GRADERS
     out = await assignment_out(db, a, user, staff, datetime.utcnow(), await _groups_map(db, a.course_id), request)
-    out.update({"course_name": course.name, "course_code": course.code, "my_role": role,
+    out.update({"course_name": course.name, "course_code": course.code, "my_role": str(role),
+                "permissions": [p for p in P.ALL if p in getattr(role, "perms", ())],
                 "server_time": _iso(datetime.utcnow())})
     if staff:
         out["students_submitted"] = (await db.execute(select(func.count(func.distinct(Submission.user_id))).where(
@@ -449,6 +459,7 @@ async def assignment_detail(assignment_id: uuid.UUID, request: Request, db: Asyn
 async def update_assignment(assignment_id: uuid.UUID, body: AssignmentIn, db: AsyncSession = Depends(get_db),
                             user: User = Depends(get_current_user)):
     a, role = await load_assignment(db, user, assignment_id, staff_only=True, graders=True)
+    access.require_kind(role, a.kind, "manage", "You may not edit this assignment")
     _lab_limits(role, body)
     was_published, old_due = a.published, a.due_at
     await _save(db, a, body)
@@ -461,7 +472,8 @@ async def update_assignment(assignment_id: uuid.UUID, body: AssignmentIn, db: As
 
 @router.delete("/assignments/{assignment_id}", status_code=204)
 async def delete_assignment(assignment_id: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    a, _ = await load_assignment(db, user, assignment_id, staff_only=True)
+    a, role = await load_assignment(db, user, assignment_id, staff_only=True)
+    access.require_kind(role, a.kind, "manage", "You may not delete this assignment")
     title = a.title
     await db.delete(a)
     await db.commit()
@@ -694,7 +706,7 @@ async def my_uploads(assignment_id: uuid.UUID, task_id: uuid.UUID, db: AsyncSess
 async def set_attendance(assignment_id: uuid.UUID, body: AttendanceIn, db: AsyncSession = Depends(get_db),
                          user: User = Depends(get_current_user)):
     a, role = await load_assignment(db, user, assignment_id, staff_only=True, graders=True)
-    access.require_role(role, access.GRADE_SETTERS, "Not allowed to record attendance")
+    access.require_kind(role, a.kind, "grade", "Not allowed to record attendance")
     if body.status is not None and body.status not in ATTENDANCE:
         raise HTTPException(status_code=422, detail="Unknown attendance status")
     row = (await db.execute(select(Attendance).where(
@@ -842,7 +854,7 @@ async def overview(assignment_id: uuid.UUID, db: AsyncSession = Depends(get_db),
                     "attempt": None if att is None else {"started_at": _iso(att.started_at), "ends_at": _iso(att.ends_at),
                                                          "finished_at": _iso(att.finished_at), "ip": att.ip},
                     "signals": signals.get(str(u.id), {})})
-    return {"my_role": my_role, "assignment_id": str(a.id), "title": a.title, "exam": a.exam, "grades_published": a.grades_published,
+    return {"my_role": str(my_role), "permissions": [p for p in P.ALL if p in getattr(my_role, "perms", ())], "assignment_id": str(a.id), "title": a.title, "exam": a.exam, "grades_published": a.grades_published,
             "max_points": exam.max_points([at for at, _ in rows]), "students": out,
             "tasks": [{"task_id": str(t.id), "title": content.t_title(t), "points": at.points, "kind": t.kind,
                        "variant_group": at.variant_group} for at, t in rows]}
@@ -875,7 +887,7 @@ async def review(assignment_id: uuid.UUID, user_id: uuid.UUID, task_id: uuid.UUI
     ref = (await db.execute(select(TaskFile.name, TaskFile.size).where(TaskFile.task_id == task.id))).first()
     events = (await db.execute(select(ExamEvent).where(
         ExamEvent.assignment_id == a.id, ExamEvent.user_id == user_id).order_by(ExamEvent.created_at))).scalars().all()
-    return {"my_role": my_role, 
+    return {"my_role": str(my_role), "permissions": [p for p in P.ALL if p in getattr(my_role, "perms", ())],
         "student": {"user_id": str(student.id), "name": student.name, "email": student.email},
         "task": {"task_id": str(task.id), "title": content.t_title(task), "language": task.language, "points": at.points,
                  "kind": task.kind, "rubric": task.rubric or [],
@@ -905,7 +917,7 @@ async def grading_assist(assignment_id: uuid.UUID, body: AssistIn, db: AsyncSess
     student — for whoever enters the points (a лаборант on labs, assistants, the professor). Nothing is saved."""
     from app.services import agent_service
     a, role = await load_assignment(db, user, assignment_id, staff_only=True, graders=True)
-    access.require_role(role, access.GRADE_SETTERS, "Not allowed to set points")
+    access.require_kind(role, a.kind, "grade", "Not allowed to set points")
     row = (await db.execute(select(AssignmentTask, Task).join(Task, Task.id == AssignmentTask.task_id).where(
         AssignmentTask.assignment_id == a.id, AssignmentTask.task_id == body.task_id))).first()
     if row is None:
@@ -938,7 +950,7 @@ async def grading_assist(assignment_id: uuid.UUID, body: AssistIn, db: AsyncSess
 async def set_grade(assignment_id: uuid.UUID, body: GradeIn, db: AsyncSession = Depends(get_db),
                     user: User = Depends(get_current_user)):
     a, role = await load_assignment(db, user, assignment_id, staff_only=True, graders=True)
-    access.require_role(role, access.GRADE_SETTERS, "Not allowed to set points")
+    access.require_kind(role, a.kind, "grade", "Not allowed to set points")
     row = (await db.execute(select(AssignmentTask, Task).join(Task, Task.id == AssignmentTask.task_id).where(
         AssignmentTask.assignment_id == a.id, AssignmentTask.task_id == body.task_id))).first()
     if row is None:
@@ -989,9 +1001,9 @@ async def _submission_for_staff(db: AsyncSession, user: User, submission_id, com
     s = (await db.execute(select(Submission).where(Submission.id == submission_id))).scalar_one_or_none()
     if s is None:
         raise HTTPException(status_code=404, detail="Submission not found")
-    _, role = await load_assignment(db, user, s.assignment_id, staff_only=True, graders=True)
+    a, role = await load_assignment(db, user, s.assignment_id, staff_only=True, graders=True)
     if comment:
-        access.require_role(role, access.GRADE_SETTERS, "Not allowed to comment")
+        access.require_kind(role, a.kind, "grade", "Not allowed to comment")
     return s
 
 
@@ -1021,7 +1033,7 @@ async def publish_grades(assignment_id: uuid.UUID, body: PublishIn, background: 
                          db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     """Show the final points and the teachers' comments to the students (or hide them again)."""
     a, role = await load_assignment(db, user, assignment_id, staff_only=True, graders=True)
-    access.require_role(role, access.GRADE_SETTERS, "Not allowed to publish the points")
+    access.require_kind(role, a.kind, "grade", "Not allowed to publish the points")
     first = body.published and not a.grades_published
     a.grades_published = body.published
     if first:  # drafts only — a teacher reads and sends them from the "Mail" tab
@@ -1171,13 +1183,13 @@ async def gradebook_data(db: AsyncSession, course_id) -> dict:
 
 @router.get("/courses/{course_id}/gradebook")
 async def gradebook(course_id: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    await access.load_course(db, user, course_id, access.COURSE_STAFF)
+    await access.load_course(db, user, course_id, "grades.view")
     return await gradebook_data(db, course_id)
 
 
 @router.get("/courses/{course_id}/gradebook.csv")
 async def gradebook_csv(course_id: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    course, _ = await access.load_course(db, user, course_id, access.COURSE_STAFF)
+    course, _ = await access.load_course(db, user, course_id, "grades.view")
     gb = await gradebook_data(db, course_id)
     buf = io.StringIO()
     buf.write("﻿")  # BOM: Excel opens Cyrillic UTF-8 correctly

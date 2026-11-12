@@ -65,15 +65,18 @@ def _staff(u: User) -> bool:
 
 
 async def _relation(db: AsyncSession, viewer: User, target: User) -> tuple[bool, bool]:
-    """(shares a course, viewer is staff in a course they share)"""
+    """(shares a course, viewer is staff in a course they share). Every student is in the spaces of the mandatory
+    subjects, so two students who are both there only through their study plan aren't "classmates" for this — only
+    when the admin or Moodle put one of them in (a real class), or a teacher is involved."""
     if viewer.id == target.id:
         return True, True
     me, them = aliased(CourseMember), aliased(CourseMember)
     rows = (await db.execute(
-        select(me.role).join(them, and_(them.course_id == me.course_id, them.user_id == target.id))
+        select(me.role, me.source, them.role, them.source).join(them, and_(them.course_id == me.course_id, them.user_id == target.id))
         .join(Course, Course.id == me.course_id).where(me.user_id == viewer.id)
-    )).scalars().all()
-    return bool(rows), any(r in ("teacher", "assistant") for r in rows)
+    )).all()
+    shared = [r for r in rows if "teacher" in (r[0], r[2]) or not (r[1] == "plan" and r[3] == "plan")]
+    return bool(shared), any(r[0] == "teacher" for r in shared)
 
 
 def _out(u: User, p: UserProfile | None, *, email: bool, student_facts: bool) -> dict:

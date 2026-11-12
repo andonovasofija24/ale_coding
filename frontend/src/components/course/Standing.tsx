@@ -1,4 +1,5 @@
 import { Fragment, useState } from 'react'
+import { can } from '../../lib/perms'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertCircle, Check, ChevronDown, FileSpreadsheet, Loader2, Minus, X } from 'lucide-react'
 import { standingApi } from '../../services/api'
@@ -44,7 +45,7 @@ export function StandingTable({ course, group }: { course: CourseDetail; group: 
           w: cats.map((c) => `${t(`gcat.${c}` as any)} ${fmt(data.scheme.weights[c])}%`).join(' · '),
           r: rulesOn,
         })}
-        {course.my_role === 'teacher' && <> {t('standing.changeBelow')}</>}
+        {can(course, 'grades.rules') && <> {t('standing.changeBelow')}</>}
       </p>
       {students.length === 0 ? <div className="mt-4 card px-6 py-12 text-center text-ink-muted">{t('grades.noStudents')}</div> : (
         <div className="mt-3 card overflow-x-auto">
@@ -97,7 +98,7 @@ export function StandingTable({ course, group }: { course: CourseDetail; group: 
                         {s.estimate?.grade != null ? <span className="inline-flex w-7 h-7 items-center justify-center rounded-full border-2 border-dashed border-ink/40 font-bold">{s.estimate.grade}</span> : '—'}
                       </td>
                       <td className="sticky right-0 z-10 bg-surface px-4 py-2 border-b border-l border-line-soft text-center">
-                        <FinalGrade courseId={course.id} student={s} canSet={course.my_role === 'teacher'} />
+                        <FinalGrade courseId={course.id} student={s} canSet={can(course, 'grades.final')} />
                       </td>
                     </tr>
                     {open === s.user_id && (

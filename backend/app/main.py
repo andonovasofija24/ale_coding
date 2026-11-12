@@ -21,6 +21,15 @@ async def lifespan(_: FastAPI):
                                 has_key=bool(cfg.api_key))
     except Exception:
         observability.log.exception("could not load AI settings; using environment defaults")
+    try:
+        from app.database import AsyncSessionLocal
+        from app.services import spaces
+        async with AsyncSessionLocal() as db:   # every subject has its space; students are in their plan's spaces
+            await spaces.ensure_all(db)
+            await spaces.sync_students(db)
+            await db.commit()
+    except Exception:
+        observability.log.exception("could not prepare the subject spaces")
     gone = await observability.prune(settings.LOG_RETENTION_DAYS)
     if gone:
         observability.log_event("old logs pruned", events=gone, days=settings.LOG_RETENTION_DAYS)

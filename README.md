@@ -69,7 +69,7 @@ The agent uses **GPT-4o** via OpenAI and has three capabilities:
 ## courses.finki (Moodle) — LTI 1.3
 
 ALE works as an external tool inside the faculty's Moodle: people open it from their Moodle course and are signed
-in without a password, land in the linked ALE course with their Moodle role (teacher / assistant / student), and
+in without a password, land in the linked subject's space with their Moodle role (teacher / student), and
 points go back into Moodle's gradebook.
 
 **Register (once, ALE admin + Moodle admin)**
@@ -84,8 +84,8 @@ points go back into Moodle's gradebook.
 
 **In a course (teacher)**
 
-1. In the Moodle course add the activity *ALE* and click *Select content*. The first time, ALE asks which ALE course
-   this Moodle course is (a course of the same subject is suggested) or makes a new one.
+1. In the Moodle course add the activity *ALE* and click *Select content*. The first time, ALE asks which subject this
+   Moodle course is (the subject with the same name is suggested).
 2. Choose a link to the whole course and/or assignments: each assignment becomes a Moodle activity with its own grade
    column.
 3. ALE → course → *Students* (or *Grades*): *Pull participants* (everyone from Moodle with their role) and *Send grades*.
@@ -97,24 +97,33 @@ in ALE, never lower one, and never changes a role the admin set (locked). Moodle
 Standards: LTI 1.3 Core, Deep Linking 2.0, Assignment and Grade Services 2.0, Names and Role Provisioning 2.0,
 Dynamic Registration 1.0. Tested with Moodle 4.5.
 
-## Roles
+## Subjects, accounts and permissions
+
+There are no courses to make: **every subject has one space** (its labs, colloquia, homework, points, final grades,
+materials, mail and the Moodle link). Accounts are only **student**, **teacher** and **admin**.
 
 | Who | What they do |
 |---|---|
-| **Admin** | Everything: makes courses (*Administration → Courses*) and puts people in them with their role, manages subjects (the FINKI catalogue, electives per semester), users, AI, mail, LTI. |
-| **Professor** (course role *teacher*) | Everything in the course: sees the points of the labs and the colloquia, writes the **grading rules** (*Grades → Standing*) and enters the **final grades** (5–10; the standing only proposes one). |
-| **Assistant** | Adds the labs (mainly their job) and sets their type, sets up colloquia / exams and homework, reviews and comments, enters points and attendance, publishes the points; sees the gradebook. No grading rules, no final grades. |
-| **Lab assistant** (*лаборант*) | The labs (and practice) only: adds and edits them when needed and sets their type (lab or practice), looks at the submissions, enters points (the **grading tutor** suggests them) and attendance, comments, publishes the lab points. |
-| **Student** | Practises in every subject; solves the labs and everything else only in the courses they are enrolled in (by the admin, or by Moodle via LTI). |
+| **Admin** | Everything. Manages the subjects (the FINKI catalogue), users, AI, mail, LTI, and in *Administration → Teachers* adds the teachers to each subject and ticks what each of them may do there. |
+| **Teacher** | In each subject only what the admin ticked for them (below). A teacher of one subject is nobody in another. |
+| **Student** | Is in the spaces of their studies on their own: **every mandatory subject** and **the electives they chose** (dropping an elective takes them out). There they do the labs and colloquia and practise with the teachers' practice tasks ("the higher level"). In any other subject only the public tasks and AI practice on their own key. The admin or Moodle can add a student to any subject. |
+
+**Permissions of a teacher in a subject** (like Moodle's capabilities): labs and practice — *see / make and edit (and
+their type) / enter points, attendance, comments*; colloquia, exams, homework — *see / set up / enter points*; points
+and grades — *see all points and the standing / final grades / grading rules*; and *see the people, upload materials,
+send mail, see the subject's logs, see the students' own AI practice*. The buttons **Like a professor / an assistant / a
+лаборант** only tick the boxes (professor: all; assistant: all but final grades and grading rules; лаборант: the labs
+and the students' practice) — any box can then be changed one by one, nothing else is stored.
 
 **Grading tutor.** On the grading page, *Grading tutor* asks the AI for a suggestion: points (or rubric scores), what
 is good, the issues by line (each can become a code comment) and a comment for the student. Nothing is saved until
 the grader saves the points.
 
-**Roles from courses.finki (LTI).** Moodle sends only *Instructor* / *Learner* (+ *Administrator*), so: Administrator →
-professor, Instructor (and Instructor#TeachingAssistant) → assistant, Instructor#Grader → лаборант, Learner → student.
-The admin sets the professor and the лаборанти once per course; a role the admin sets is **locked** (🔒 in *Students*)
-— Moodle never changes it (click the lock to let Moodle set it again). Moodle can only raise an unlocked role.
+**Roles from courses.finki (LTI).** Moodle sends only *Instructor* / *Learner* (+ *Administrator*): Learner → student,
+Instructor → a teacher with the assistant's boxes ticked, Instructor#Grader → the лаборант's, Administrator → the
+professor's. The admin links a Moodle course to a subject's space (a teacher of the subject can link it too). What the
+admin sets is **locked** (🔒 in *Students*) — Moodle never changes it (click the lock to let Moodle add permissions
+again); Moodle can only add, never take away.
 
 ## Logs
 

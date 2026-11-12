@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { canKind } from '../lib/perms'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -65,7 +66,7 @@ function Content({ a }: { a: Assignment }) {
             <Users size={11} /> {a.group_name}
           </span>
         )}
-        {staff && (
+        {staff && canKind(a, a.kind, 'manage') && (
           <Link to={`/assignments/${a.id}/edit`} className="ml-auto btn-secondary btn-sm"><Pencil size={14} /> {t('assign.edit')}</Link>
         )}
       </div>
@@ -186,8 +187,8 @@ function StaffTools({ a }: { a: Assignment }) {
     <section className="mt-4 flex flex-wrap items-center gap-2">
       <Link to={`/assignments/${a.id}/grading`} className="btn-primary"><GraduationCap size={15} /> {t('grading.open')}</Link>
       <Link to={`/assignments/${a.id}/similarity`} className="btn-secondary"><Copy size={15} /> {t('sim.open')}</Link>
-      {a.my_role !== 'student' && <Link to={`/assignments/${a.id}/quick`} className="btn-secondary"><TableProperties size={15} /> {t('quick.open')}</Link>}
-      {a.my_role !== 'student' && (
+      {canKind(a, a.kind, 'grade') && <Link to={`/assignments/${a.id}/quick`} className="btn-secondary"><TableProperties size={15} /> {t('quick.open')}</Link>}
+      {canKind(a, a.kind, 'grade') && (
         <button onClick={toggle} disabled={busy} className={a.grades_published ? 'btn-ghost ml-auto' : 'btn-secondary ml-auto'}>
           {busy ? <Loader2 size={15} className="animate-spin" /> : a.grades_published ? <EyeOff size={15} /> : <Eye size={15} />}
           {a.grades_published ? t('grading.unpublish') : t('grading.publish')}

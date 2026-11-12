@@ -70,13 +70,13 @@ async def _staff_email(db: AsyncSession, user: User, email_id) -> tuple[Email, C
     e = (await db.execute(select(Email).where(Email.id == email_id))).scalar_one_or_none()
     if e is None:
         raise HTTPException(status_code=404, detail="Message not found")
-    course, _ = await access.load_course(db, user, e.course_id, access.COURSE_STAFF)
+    course, _ = await access.load_course(db, user, e.course_id, "mail.send")
     return e, course
 
 
 @router.get("/courses/{course_id}/emails")
 async def list_emails(course_id: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    await access.load_course(db, user, course_id, access.COURSE_STAFF)
+    await access.load_course(db, user, course_id, "mail.send")
     rows = (await db.execute(select(Email, Assignment.title).outerjoin(Assignment, Assignment.id == Email.assignment_id)
                              .where(Email.course_id == course_id, Email.kind != "reminder")
                              .order_by((Email.status == "draft").desc(), Email.created_at.desc()).limit(200))).all()
@@ -89,7 +89,7 @@ async def list_emails(course_id: uuid.UUID, db: AsyncSession = Depends(get_db), 
 
 @router.post("/courses/{course_id}/emails", status_code=201)
 async def new_email(course_id: uuid.UUID, body: EmailIn, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    course, _ = await access.load_course(db, user, course_id, access.COURSE_STAFF)
+    course, _ = await access.load_course(db, user, course_id, "mail.send")
     e = await emails.draft(db, course, "custom", None, user, audience=body.audience)
     await _apply(db, e, body)
     await db.commit()

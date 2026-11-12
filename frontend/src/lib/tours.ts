@@ -87,7 +87,8 @@ export const TOURS: Record<string, TourStep[]> = {
   ],
 }
 
-export const mainTour = (role: UserRole) => (role === 'student' ? 'student' : role)
+// teacher accounts (and the old professor / assistant names) share the staff tour
+export const mainTour = (role: UserRole) => (role === 'student' ? 'student' : role === 'admin' ? 'admin' : 'professor')
 
 const KEY = (tour: string, uid: string) => `ale-tour:${tour}:${uid}`
 export function tourDone(tour: string, uid: string): boolean {

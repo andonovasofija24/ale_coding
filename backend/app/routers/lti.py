@@ -192,7 +192,7 @@ async def _handle(db: AsyncSession, platform: LtiPlatform, c: dict) -> dict:
     await observability.activity("lti_launch", message=kind, role=course_role, platform=platform.issuer)
 
     if kind == "LtiDeepLinkingRequest":
-        if course_role not in ("teacher", "assistant"):
+        if course_role not in ("professor", "assistant"):
             raise LtiError("not_instructor")
         dl = c.get(DL_CLAIM + "deep_linking_settings") or {}
         if not dl.get("deep_link_return_url"):
@@ -207,7 +207,7 @@ async def _handle(db: AsyncSession, platform: LtiPlatform, c: dict) -> dict:
         out["next"] = "/courses"
         return out
     if ctx.course_id is None:
-        if course_role in ("teacher", "assistant"):
+        if course_role in ("professor", "assistant"):
             out["setup"] = _handoff("setup", {"ctx": str(ctx.id)})
             return out
         raise LtiError("course_not_ready")  # a student came before any teacher opened ALE from this course
@@ -305,7 +305,8 @@ async def dynamic_registration(t: str, openid_configuration: str, registration_t
 
 class SetupIn(BaseModel):
     s: str
-    course_id: Optional[uuid.UUID] = None   # link to this course; None = make a new one from the Moodle course
+    course_id: Optional[uuid.UUID] = None   # link to this subject's space (one the caller teaches in)
+    subject_id: Optional[uuid.UUID] = None  # the admin: link to this subject (None = the subject guessed from the title)
 
 
 async def _setup_context(db, user: User, s: str) -> LtiContext:
@@ -347,7 +348,8 @@ async def _guess_subject(db, ctx: LtiContext) -> Optional[Subject]:
     best = None
     for s in (await db.execute(select(Subject))).scalars().all():
         names = [n.lower() for n in (s.name, s.name_en) if n]
-        if any(n in title for n in names) and (best is None or len(s.name) > len(best.name)):
+        # the longest name that matches; a FINKI catalogue subject before one someone made with the same name
+        if any(n in title for n in names) and (best is None or (len(s.name), bool(s.finki_code)) > (len(best.name), bool(best.finki_code))):
             best = s
     return best
 
@@ -360,16 +362,13 @@ async def setup(body: SetupIn, db: AsyncSession = Depends(get_db), user: User = 
     if body.course_id:
         course, _ = await access.load_course(db, user, body.course_id, ("teacher",))
     else:
-        access.require_admin(user)  # only the administrator makes courses
-        subject = await _guess_subject(db, ctx)
-        from app.routers.courses import _new_join_code
-        course = Course(code=(ctx.label or "LTI")[:50], name=(ctx.title or ctx.label or "Moodle")[:300],
-                        join_code=_new_join_code(), created_by=user.id, subject_id=subject.id if subject else None)
-        db.add(course)
-        await db.flush()
-        db.add(CourseMember(course_id=course.id, user_id=user.id, role="teacher"))
+        access.require_admin(user)  # only the administrator links a Moodle course to a subject they don't teach
+        from app.services import spaces
+        subject = await db.get(Subject, body.subject_id) if body.subject_id else await _guess_subject(db, ctx)
+        if subject is None:
+            raise HTTPException(status_code=400, detail="lti.noSubject")
+        course = await spaces.ensure_space(db, subject)
     ctx.course_id = course.id
-    await lti.enrol(db, course.id, user, "teacher")
     await db.commit()
     observability.log_event("lti_context_linked", course_id=str(course.id))
     return {"course_id": str(course.id)}
@@ -493,7 +492,7 @@ async def sync_roster(course_id: uuid.UUID, db: AsyncSession = Depends(get_db), 
             try:
                 person, _ = await lti.user_for(db, platform, str(m["user_id"]), m.get("email", ""),
                                                m.get("name") or " ".join(x for x in (m.get("given_name"), m.get("family_name")) if x),
-                                               role in ("teacher", "assistant"))
+                                               role in ("professor", "assistant", "lab"))
             except LtiError:
                 skipped += 1
                 continue

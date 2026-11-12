@@ -1,4 +1,5 @@
-"""Admin: user accounts and their platform roles."""
+"""Admin: user accounts and their type (student | teacher | admin). What a teacher may do is set per subject
+(course members' permissions), not here."""
 import uuid
 from typing import Literal, Optional
 
@@ -15,7 +16,8 @@ router = APIRouter(prefix="/admin/users", tags=["admin-users"])
 
 
 class RoleIn(BaseModel):
-    role: Literal["student", "assistant", "professor", "admin"]
+    # student | teacher | admin ("assistant" / "professor" are old names of a teacher account)
+    role: Literal["student", "teacher", "assistant", "professor", "admin"]
 
 
 def _out(u: User) -> dict:
@@ -47,8 +49,12 @@ async def set_role(user_id: uuid.UUID, body: RoleIn, db: AsyncSession = Depends(
     if u.id == admin.id and body.role != "admin":
         raise HTTPException(status_code=409, detail="You can't remove your own admin role")
     old = u.role
-    u.role = body.role
+    new = "teacher" if body.role in ("assistant", "professor") else body.role
+    u.role = new
+    from app.services import spaces
+    await db.flush()
+    await spaces.sync_students(db, u.id)       # a student is in the spaces of their plan; others are not
     await db.commit()
     from app.services import observability
-    await observability.activity("user_role", member=u.id, email=u.email, old=old, new=body.role)
+    await observability.activity("user_role", member=u.id, email=u.email, old=old, new=new)
     return _out(u)

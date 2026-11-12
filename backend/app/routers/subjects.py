@@ -22,13 +22,14 @@ from app.core import access
 from app.core.deps import get_current_admin, get_current_user
 from app.core.language import Lang, get_language
 from app.database import get_db
-from app.models.course import Course, CourseMember
+from app.models.course import Assignment, Course, CourseMember
 from app.models.electives import ElectiveChoice
 from app.models.session import Session
 from app.models.task import Subject, Task
 from app.models.user import User
 from app.schemas.task import LANGUAGES
-from app.services import ai_config, content, limits, observability, practice
+from app.core import permissions as P
+from app.services import ai_config, content, limits, observability, practice, spaces
 
 router = APIRouter(tags=["subjects"])
 
@@ -51,15 +52,19 @@ def _practice_tasks_q(user: User, staff: bool = False):
     return q
 
 
-async def _my_courses(db: AsyncSession, user: User) -> list[tuple[Course, str]]:
+async def _my_courses(db: AsyncSession, user: User) -> list[tuple[Course, CourseMember | None]]:
+    """The subject spaces I'm in (the admin: all of them) with my membership."""
     if user.role == "admin":
-        return [(c, "teacher") for c in (await db.execute(select(Course).where(Course.archived.is_(False)))).scalars()]
-    return list((await db.execute(select(Course, CourseMember.role).join(CourseMember, CourseMember.course_id == Course.id)
+        return [(c, None) for c in (await db.execute(select(Course).where(Course.archived.is_(False)))).scalars()]
+    return list((await db.execute(select(Course, CourseMember).join(CourseMember, CourseMember.course_id == Course.id)
                                   .where(CourseMember.user_id == user.id, Course.archived.is_(False)))).all())
 
 
-def _course_brief(c: Course, role: str) -> dict:
-    return {"id": str(c.id), "code": c.code, "name": c.name, "semester": c.semester, "my_role": role}
+def _course_brief(c: Course, m: CourseMember | None) -> dict:
+    perms = list(P.ALL) if m is None else (m.permissions or [])
+    return {"id": str(c.id), "code": c.code, "name": c.name, "semester": c.semester,
+            "my_role": "teacher" if m is None else m.role, "permissions": perms, "template": P.template_of(perms),
+            "source": None if m is None else m.source}
 
 
 @router.get("/subjects")
@@ -80,10 +85,13 @@ async def list_subjects(db: AsyncSession = Depends(get_db), user: User = Depends
     for c, role in await _my_courses(db, user):
         if c.subject_id:
             courses.setdefault(c.subject_id, []).append(_course_brief(c, role))
+    space_ids = dict((await db.execute(select(Course.subject_id, Course.id).where(Course.subject_id.is_not(None)))).all())
     out = []
     for s in subjects:
         out.append({**_subject_out(s, lang), "tasks": counts.get(s.id, 0), "done": done.get(s.id, 0),
                     "generated": generated.get(s.id, 0), "courses": courses.get(s.id, []),
+                    "space_id": str(space_ids[s.id]) if s.id in space_ids else None,
+                    "member": bool(courses.get(s.id)),     # in my studies (or I teach it): its labs and practice are mine
                     "my_semester": mine_el.get(s.id)})   # a student's chosen elective: the semester they put it in
     return {"subjects": out, "unsorted": counts.get(None, 0), "can_practice": ai_config.personal() is not None}
 
@@ -118,8 +126,10 @@ async def subject_detail(subject_id: uuid.UUID, db: AsyncSession = Depends(get_d
             if progress.get(sess.task_id, ("",))[0] != "completed":
                 progress[sess.task_id] = (sess.status, sess.current_step)
     courses = [_course_brief(c, role) for c, role in await _my_courses(db, user) if c.subject_id == s.id]
+    space = await spaces.space_of(db, s.id)
     return {**_subject_out(s, lang), "tasks": [_task_item(t, lang, progress) for t in tasks],
             "generated": [_task_item(t, lang, progress) for t in mine], "courses": courses,
+            "space_id": str(space.id) if space else None, "member": bool(courses),
             "can_practice": ai_config.personal() is not None, "staff": staff}
 
 
@@ -190,6 +200,9 @@ async def create_subject(body: SubjectIn, db: AsyncSession = Depends(get_db), _:
                    "languages": _check_langs(body.languages),
                    "elective": body.elective or body.semester is None}, position=pos)
     db.add(s)
+    await db.flush()
+    await spaces.ensure_space(db, s)            # every subject has its space
+    await spaces.sync_students(db)              # a mandatory subject: every student is in it
     await db.commit()
     await observability.activity("subject_create", subject_id=s.id, code=s.code, name=s.name)
     return _subject_out(s, "mk")
@@ -206,6 +219,10 @@ async def update_subject(subject_id: uuid.UUID, body: SubjectIn, db: AsyncSessio
         setattr(s, k, _check_langs(v) if k == "languages" else v.strip() if k == "code" else v)
     s.finki_code = (body.finki_code or "").strip() or None
     s.elective = body.elective or body.semester is None
+    space = await spaces.ensure_space(db, s)
+    space.name = s.name
+    await db.flush()
+    await spaces.sync_students(db)              # mandatory ↔ elective changes who is in it
     await db.commit()
     await observability.activity("subject_update", subject_id=s.id, code=s.code, name=s.name)
     return _subject_out(s, "mk")
@@ -215,7 +232,12 @@ async def update_subject(subject_id: uuid.UUID, body: SubjectIn, db: AsyncSessio
 async def delete_subject(subject_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)):
     s = await _subject(db, subject_id)
     code, name = s.code, s.name
-    await db.delete(s)  # tasks and courses keep existing, without a subject
+    space = await spaces.space_of(db, s.id)
+    if space is not None:
+        if (await db.execute(select(Assignment.id).where(Assignment.course_id == space.id).limit(1))).first():
+            raise HTTPException(status_code=409, detail="subject.hasAssignments")
+        await db.delete(space)
+    await db.delete(s)  # the tasks keep existing, without a subject
     await db.commit()
     await observability.activity("subject_delete", subject_id=subject_id, code=code, name=name)
 

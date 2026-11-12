@@ -9,7 +9,7 @@ import Avatar from './Avatar'
 import Logo from './Logo'
 import LanguageSwitcher from './LanguageSwitcher'
 
-const ROLE_LABEL_KEYS = { student: 'role.student', assistant: 'role.assistant', professor: 'role.professor', admin: 'role.admin' } as const
+const ROLE_LABEL_KEYS = { student: 'role.student', teacher: 'role.teacher', assistant: 'role.teacher', professor: 'role.teacher', admin: 'role.admin' } as const
 
 /** Top bar shared by the course, task list and admin pages: main sections + account. */
 export default function AppHeader({ children, showAdminLink = true }: { children?: ReactNode; showAdminLink?: boolean }) {
