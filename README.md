@@ -100,7 +100,15 @@ Dynamic Registration 1.0. Tested with Moodle 4.5.
 ## Subjects, accounts and permissions
 
 There are no courses to make: **every subject has one space** (its labs, colloquia, homework, points, final grades,
-materials, mail and the Moodle link). Accounts are only **student**, **teacher** and **admin**.
+materials, mail and the Moodle link). Accounts are only **student**, **teacher** and **admin**, and the e-mail decides
+which: `…@students.finki.ukim.mk` signs up as a student, `…@finki.ukim.mk` as a teacher with **no permissions** until
+the admin adds them to a subject; other e-mails cannot sign up (`STUDENT_EMAIL_DOMAINS` / `TEACHER_EMAIL_DOMAINS`).
+The admin can still change an account by hand (e.g. a student-лаборант keeps a student account and gets the лаборант's
+permissions in one subject).
+
+**Estimated grade.** ALE is for practice, so each student sees their estimated grade at once (in the subject's header
+and under *Standing*): every point they may already see counts, also of labs and colloquia still open; a part with no
+points yet comes from their practice. The real grade is entered later by a teacher with *final grades*.
 
 | Who | What they do |
 |---|---|

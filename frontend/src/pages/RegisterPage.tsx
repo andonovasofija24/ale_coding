@@ -60,6 +60,7 @@ export default function RegisterPage() {
             placeholder={t('auth.emailPlaceholder')}
             required
           />
+          <p className="field-hint">{t('auth.emailDomainHint')}</p>
         </div>
         <div>
           <label htmlFor="password" className="field-label">{t('auth.password')}</label>

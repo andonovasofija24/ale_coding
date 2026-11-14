@@ -101,6 +101,8 @@ services:
       - RATE_AI_PER_MINUTE=${RATE_AI_PER_MINUTE:-10}
       - RATE_AI_PER_DAY=${RATE_AI_PER_DAY:-300}
       - LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-180}
+      - STUDENT_EMAIL_DOMAINS=${STUDENT_EMAIL_DOMAINS:-students.finki.ukim.mk}
+      - TEACHER_EMAIL_DOMAINS=${TEACHER_EMAIL_DOMAINS:-finki.ukim.mk}
       - RATE_TESTS_PER_MINUTE=${RATE_TESTS_PER_MINUTE:-20}
       # Exams: submissions are tested this many at a time (= RUNNER_WORKERS × code-runner replicas); the rest wait
       - SUBMISSION_WORKERS=${SUBMISSION_WORKERS:-${RUNNER_WORKERS:-4}}

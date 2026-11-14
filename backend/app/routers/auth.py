@@ -6,6 +6,7 @@ from sqlalchemy import select
 from app.database import get_db
 from app.models.user import User
 from app.schemas.user import UserRegister, UserLogin, TokenResponse, UserOut
+from app.core import accounts
 from app.core.security import hash_password, verify_password, create_access_token
 from app.core.deps import get_current_user
 
@@ -27,11 +28,15 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    kind = accounts.account_for_email(data.email)
+    if kind is None:   # only the faculty's e-mails: students.finki.ukim.mk → student, finki.ukim.mk → teacher
+        await observability.activity("register", ok=False, email=_mask(data.email), reason="domain")
+        raise HTTPException(status_code=403, detail="auth.emailDomain")
     user = User(
         email=data.email,
         password_hash=await run_in_threadpool(hash_password, data.password),
         name=data.name,
-        role="student",
+        role=kind,
     )
     db.add(user)
     await db.flush()

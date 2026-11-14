@@ -21,6 +21,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core import accounts
 from app.core import permissions as P
 from app.models.course import CourseMember
 from app.models.lti import LtiContext, LtiNonce, LtiPlatform, LtiToolKey, LtiUser
@@ -222,15 +223,18 @@ async def user_for(db: AsyncSession, platform: LtiPlatform, sub: str, email: str
         if (await db.execute(select(User).where(func.lower(User.email) == addr))).scalar_one_or_none():
             # the e-mail belongs to someone else and this platform may not link by e-mail
             raise LtiError("email_taken", addr)
+        # the e-mail decides the account (a student-лаборант stays a student: what they may do in the course comes
+        # from the membership); only an e-mail of no known domain falls back to the Moodle role
+        kind = accounts.account_for_email(addr) or ("teacher" if instructor else "student")
         user = User(email=addr, name=(name or addr.split("@")[0])[:255], password_hash="!lti",
-                    role="teacher" if instructor else "student", auth_provider="lti")
+                    role=kind, auth_provider="lti")
         db.add(user)
         await db.flush()
         created = True
         observability.log_event("lti_user_created", user_id=str(user.id))
     else:
-        if instructor and user.role == "student":
-            user.role = "teacher"  # a teacher in the faculty's Moodle
+        if instructor and user.role == "student" and accounts.account_for_email(user.email) is None:
+            user.role = "teacher"  # a teacher in the faculty's Moodle (an e-mail of a known domain decides itself)
         if name and user.auth_provider == "lti" and user.name != name[:255]:
             user.name = name[:255]
     if created or (instructor and user.role == "teacher"):

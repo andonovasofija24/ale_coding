@@ -21,6 +21,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core import accounts
 from app.core.security import create_access_token
 from app.database import get_db
 from app.models.user import User
@@ -173,10 +174,16 @@ async def sso_callback(request: Request, db: AsyncSession = Depends(get_db)):
         # existing password account is only taken over when the app is locked to the faculty's own tenant.
         return _fail("exists")
     if user is None:
+        kind = accounts.account_for_email(email)
+        if kind is None:   # the account type comes from the e-mail; other domains may not sign up
+            return _fail("domain")
         user = User(email=email, name=(claims.get("name") or email.split("@")[0])[:255],
                     password_hash="!microsoft",  # not a valid hash: password login is impossible
-                    role="student", auth_provider="microsoft")
+                    role=kind, auth_provider="microsoft")
         db.add(user)
+        await db.flush()
+        from app.services import spaces
+        await spaces.sync_students(db, user.id)    # a student: the spaces of their study plan
         await db.commit()
         await db.refresh(user)
         observability.log_event("sso_user_created", user_id=str(user.id))

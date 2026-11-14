@@ -15,8 +15,9 @@ For each student: points per category, total so far, signature, exam eligibility
 a proposed grade — and for every "no" the reason, so the teacher (and the student) can see why.
 Only assignments that count already are used: published and closed (or graded and published).
 
-The estimated grade ("if you keep going like this"): the same weights and thresholds, but for a part that has no
-points yet it takes what the student has practised — the practice assignments made for that colloquium / the exam,
+The estimated grade ("if you keep going like this"), shown to the student at once: the same weights and thresholds,
+with every point the student may see right away (also of work still open: handed in, auto-checked or graded — ALE is
+a place to practise; the real grade is entered by a teacher), and for a part that has no points yet it takes what the student has practised — the practice assignments made for that colloquium / the exam,
 the labs still open, and their own practice in the subject (tasks they finished out of those they started).
 """
 import uuid
@@ -87,7 +88,9 @@ async def compute(db: AsyncSession, course: Course, gradebook: dict, now: dateti
         closed = bool(a.due_at and a.due_at <= now)
         info[ga["id"]] = {"cat": category_of(a), "max": ga["max_points"], "counts": a.published and (closed or a.grades_published),
                           "closed": a.published and closed, "prep": a.practice_for if a.published else None,
-                          "open": a.published and not closed and not a.grades_published}
+                          "open": a.published and not closed and not a.grades_published,
+                          # the student may see these points (not hidden until the teacher publishes them)
+                          "visible": a.published and (not a.scores_after_publish or a.grades_published)}
     aids = list(rows)
     present = {(str(x.assignment_id), str(x.user_id)): x.status for x in (await db.execute(
         select(Attendance).where(Attendance.assignment_id.in_(aids)))).scalars()} if aids else {}
@@ -189,6 +192,21 @@ def _estimate(s: dict, info: dict, pct: dict, weights: dict, thresholds: list, o
     for c in CATEGORIES:
         if not weights.get(c):
             continue
+        # every point there is already, at once: what counts (closed / published) and what is still open but has
+        # points (handed in, auto-checked or graded) — ALE is for practice; the teacher still enters the real grade
+        got = mx = 0.0
+        sofar = False
+        for aid, cell in s["scores"].items():
+            i = info.get(aid)
+            if not i or not cell["applies"] or not i["max"] or i["cat"] != c or not i["visible"]:
+                continue
+            if i["counts"] or cell["score"] is not None:
+                got += cell["score"] or 0
+                mx += i["max"]
+                sofar = sofar or not i["counts"]
+        if mx:
+            parts[c] = {"pct": round(100 * got / mx, 1), "source": "open" if sofar else "real"}
+            continue
         if pct[c] is not None:
             parts[c] = {"pct": pct[c], "source": "real"}
             continue
@@ -196,14 +214,14 @@ def _estimate(s: dict, info: dict, pct: dict, weights: dict, thresholds: list, o
         src = None
         for aid, cell in s["scores"].items():
             i = info.get(aid)
-            if not i or not cell["applies"] or not i["max"]:
+            if not i or not cell["applies"] or not i["max"] or not i["visible"]:
                 continue
             if i["prep"] == c or (i["open"] and i["cat"] == c):
                 got += cell["score"] or 0
                 mx += i["max"]
                 src = "prep" if i["prep"] == c or src == "prep" else "open"
-        tried = mx and any(info.get(a, {}).get("prep") == c or (info.get(a, {}).get("open") and info.get(a, {}).get("cat") == c)
-                           for a, cell in s["scores"].items() if cell["score"] is not None)
+        tried = mx and any((info.get(a, {}).get("prep") == c or (info.get(a, {}).get("open") and info.get(a, {}).get("cat") == c))
+                           and info.get(a, {}).get("visible") for a, cell in s["scores"].items() if cell["score"] is not None)
         if tried:
             parts[c] = {"pct": round(100 * got / mx, 1), "source": src}
         elif own is not None:

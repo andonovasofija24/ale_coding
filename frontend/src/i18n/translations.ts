@@ -1860,10 +1860,10 @@ const en = {
   "est.notYetHint": "Practise a bit more (colloquium exercises, labs, your own tasks) and the estimate appears here.",
   "est.src.real": "real points",
   "est.src.prep": "from colloquium exercises",
-  "est.src.open": "from the work so far (still open)",
+  "est.src.open": "points so far (also work still open)",
   "est.src.own": "from your own practice",
   "est.src.none": "no data yet",
-  "est.note": "Only an estimate — the professor enters the grade.",
+  "est.note": "Only an estimate from all your points so far (ALE is for practice) — the real grade is entered by a teacher.",
   "err.Only students choose electives": "Only students choose electives.",
   "err.Your electives are confirmed: send a request to the admin": "Your electives are confirmed: send a request to the admin.",
   "err.Not an elective subject": "That is not an elective subject.",
@@ -2032,6 +2032,11 @@ const en = {
   "adminSpaces.noTeachers": "No teachers yet",
   "adminSpaces.email": "The teachers' e-mails",
   "adminSpaces.added": "Added. Their permissions can be changed one by one under \"People and permissions\".",
+  "err.auth.emailDomain": "Sign up with your faculty e-mail: @students.finki.ukim.mk (students) or @finki.ukim.mk (teachers).",
+  "auth.emailDomainHint": "Faculty e-mail only. @students.finki.ukim.mk is a student account; @finki.ukim.mk a teacher account (what you may do in a subject is set by the administrator).",
+  "est.badgeHint": "{total}% so far — open the standing",
+  "est.badgeFinal": "Your grade",
+  "est.badgeFinalHint": "Entered by the teacher",
 }
 
 export type TranslationKey = keyof typeof en
@@ -3894,10 +3899,10 @@ const mk: Record<TranslationKey, string> = {
   "est.notYetHint": "Вежбај уште малку (колоквиумски вежби, лабораториски, твои задачи) и тука ќе се појави проценката.",
   "est.src.real": "вистински поени",
   "est.src.prep": "од колоквиумските вежби",
-  "est.src.open": "од досегашната работа (уште отворени)",
+  "est.src.open": "поени досега (и од уште отворени)",
   "est.src.own": "од твоето вежбање",
   "est.src.none": "уште нема податоци",
-  "est.note": "Само проценка — оцената ја внесува професорот.",
+  "est.note": "Само проценка од сите твои поени досега (ALE е за вежбање) — вистинската оцена ја внесува наставник.",
   "err.Only students choose electives": "Изборни бираат само студентите.",
   "err.Your electives are confirmed: send a request to the admin": "Изборот е потврден: испрати барање до админот.",
   "err.Not an elective subject": "Тоа не е изборен предмет.",
@@ -4066,6 +4071,11 @@ const mk: Record<TranslationKey, string> = {
   "adminSpaces.noTeachers": "Сè уште без наставници",
   "adminSpaces.email": "Е-пошта на наставниците",
   "adminSpaces.added": "Додадено. Дозволите може да се менуваат посебно во „Луѓе и дозволи“.",
+  "err.auth.emailDomain": "Регистрирај се со факултетска е-пошта: @students.finki.ukim.mk (студенти) или @finki.ukim.mk (наставници).",
+  "auth.emailDomainHint": "Само факултетска е-пошта. @students.finki.ukim.mk е студентска сметка, @finki.ukim.mk наставничка (што смеете во предмет одредува администраторот).",
+  "est.badgeHint": "{total}% досега — отвори ја состојбата",
+  "est.badgeFinal": "Твојата оценка",
+  "est.badgeFinalHint": "Ја внесе наставникот",
 }
 
 export const translations: Record<Lang, Record<TranslationKey, string>> = { en, mk }

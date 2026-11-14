@@ -22,6 +22,8 @@ import MailTab from '../components/course/MailTab'
 import MaterialsTab from '../components/course/MaterialsTab'
 import Announcements from '../components/course/Announcements'
 import { MyStanding } from '../components/course/Standing'
+import { standingApi } from '../services/api'
+import type { StudentStanding } from '../types'
 
 type Tab = 'assignments' | 'students' | 'grades' | 'materials' | 'mail' | 'settings' | 'notices' | 'standing' | 'logs'
 
@@ -80,6 +82,7 @@ export default function CoursePage() {
           </div>
           <h1 className="mt-2 text-3xl sm:text-4xl font-extrabold tracking-tight max-w-2xl">{course.name}</h1>
           {!staff && course.my_group && <p className="mt-1.5 text-sm text-white/70">{t('course.myGroup', { group: course.my_group })}</p>}
+          {!staff && tab !== 'standing' && <EstimateBadge courseId={course.id} onOpen={() => setParams({ tab: 'standing' }, { replace: true })} />}
           {staff && <p className="mt-1.5 text-sm text-white/70">{(course.students === 1 ? t('courses.studentOne') : t('courses.studentsN', { n: course.students }))} · {permLabel(course.template, t)}</p>}
           {courseLangs.length > 0 && courseLangs.length < LANG_ORDER.length && (
             <div className="mt-3 flex flex-wrap gap-1.5">{courseLangs.map((l) => <LangChip key={l} lang={l} />)}</div>
@@ -174,4 +177,29 @@ function AssignmentList({ title, items }: { title: string; items: Assignment[] }
 /** The newest notice, above the assignments (all of them are in the "Notices" tab). */
 function LatestNotice({ courseId }: { courseId: string }) {
   return <Announcements courseId={courseId} limit={1} />
+}
+
+
+/** A student's estimated grade, right in the subject's header: ALE is for practice, so it is there at once (the real
+ *  grade is the one a teacher enters). Opens the standing. */
+function EstimateBadge({ courseId, onOpen }: { courseId: string; onOpen: () => void }) {
+  const { t } = useLanguage()
+  const { data } = useQuery<{ me: StudentStanding | null }>({
+    queryKey: ['standing', courseId, 'me'], queryFn: () => standingApi.standing(courseId),
+  })
+  const me = data?.me
+  if (!me) return null
+  const final = me.final_grade ?? null
+  const grade = final ?? me.estimate?.grade ?? null
+  return (
+    <button type="button" onClick={onOpen}
+      className="mt-4 inline-flex items-center gap-3 rounded-xl bg-white/10 hover:bg-white/15 px-3.5 py-2 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/70">
+      <span className={`inline-flex w-10 h-10 items-center justify-center rounded-full text-xl font-extrabold ${
+        final != null ? 'bg-white text-ink' : 'border-2 border-dashed border-white/60'}`}>{grade ?? '—'}</span>
+      <span className="text-[13px] leading-snug">
+        <span className="block font-semibold">{final != null ? t('est.badgeFinal') : t('est.title')}</span>
+        <span className="block text-white/65">{final != null ? t('est.badgeFinalHint') : grade != null ? t('est.badgeHint', { total: (me.estimate?.total ?? 0).toLocaleString() }) : t('est.notYet')}</span>
+      </span>
+    </button>
+  )
 }

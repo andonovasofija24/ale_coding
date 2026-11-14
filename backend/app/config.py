@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     # Exams with allowed networks: use X-Forwarded-For for the student's IP (only behind your own reverse proxy)
     TRUST_PROXY_HEADERS: bool = False
 
+    # The account type comes from the e-mail: these domains are students, these teachers (no permissions until the
+    # admin gives them a subject); other e-mails may not sign up. Comma-separated, exact domains.
+    STUDENT_EMAIL_DOMAINS: str = "students.finki.ukim.mk"
+    TEACHER_EMAIL_DOMAINS: str = "finki.ukim.mk"
+
     # Sign in with Microsoft (faculty accounts). Off unless MS_CLIENT_ID and MS_CLIENT_SECRET are set.
     MS_CLIENT_ID: str = ""
     MS_CLIENT_SECRET: str = ""
