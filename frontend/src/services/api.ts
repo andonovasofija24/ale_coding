@@ -109,10 +109,10 @@ export const subjectsApi = {
 // A student's electives (chosen once; then changes go to the admin as requests)
 export const electivesApi = {
   mine: () => api.get('/me/electives').then((r) => r.data),
-  choose: (subject_id: string, semester: number) => api.post('/me/electives', { subject_id, semester }).then((r) => r.data),
-  drop: (subject_id: string) => api.delete(`/me/electives/${subject_id}`).then((r) => r.data),
+  choose: (subject_id: string, semester: number, reason = '') => api.post('/me/electives', { subject_id, semester, reason }).then((r) => r.data),
+  drop: (subject_id: string, reason = '') => api.delete(`/me/electives/${subject_id}`, { params: { reason } }).then((r) => r.data),
   confirm: () => api.post('/me/electives/confirm').then((r) => r.data),
-  request: (data: { remove_subject_id: string; add_subject_id: string; add_semester: number; reason: string }) =>
+  request: (data: { remove_subject_id?: string | null; add_subject_id?: string | null; add_semester?: number | null; reason: string }) =>
     api.post('/me/elective-requests', data).then((r) => r.data),
   cancel: (id: string) => api.delete(`/me/elective-requests/${id}`),
   adminList: (status = 'pending') => api.get('/admin/elective-requests', { params: { status } }).then((r) => r.data),

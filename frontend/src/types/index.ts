@@ -628,12 +628,13 @@ export interface GradeEstimate {
 export interface ElectiveSide { subject_id: string; name: string; code: string; semester: number }
 export interface ElectiveRequest {
   id: string; status: 'pending' | 'approved' | 'rejected' | 'cancelled'; reason: string; admin_note: string
-  created_at: string; decided_at: string | null; remove: ElectiveSide; add: ElectiveSide; move: boolean
+  created_at: string; decided_at: string | null; kind?: 'add' | 'remove' | 'move' | 'swap'
+  remove: ElectiveSide | null; add: ElectiveSide | null; move: boolean
   student?: { user_id: string; name: string; email: string }; current?: { subject_id: string; semester: number }[]
 }
 export interface ElectivePlan {
   confirmed: boolean; confirmed_at: string | null; choices: { subject_id: string; semester: number }[]
-  pending: ElectiveRequest | null; requests: ElectiveRequest[]
+  pending: ElectiveRequest | null; pending_requests?: ElectiveRequest[]; requests: ElectiveRequest[]
 }
 export interface StudentPractice {
   students: { user_id: string; name: string; email: string; done: number; tasks: SubjectTask[] }[]; tasks: number

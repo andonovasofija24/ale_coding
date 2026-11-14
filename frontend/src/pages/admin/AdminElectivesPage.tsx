@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeftRight, Check, Inbox, Loader2, RotateCcw, X } from 'lucide-react'
+import { ArrowLeftRight, Check, Inbox, Loader2, X } from 'lucide-react'
 import { electivesApi } from '../../services/api'
 import { useLanguage } from '../../i18n/LanguageContext'
 import { ElectiveRequest } from '../../types'
@@ -53,7 +53,7 @@ function RequestCard({ r, lang }: { r: ElectiveRequest; lang: string }) {
   const { t, tError } = useLanguage()
   const qc = useQueryClient()
   const [note, setNote] = useState('')
-  const [busy, setBusy] = useState<'' | 'approve' | 'reject' | 'reopen'>('')
+  const [busy, setBusy] = useState<'' | 'approve' | 'reject'>('')
   const [err, setErr] = useState('')
   const act = async (kind: 'approve' | 'reject') => {
     setBusy(kind); setErr('')
@@ -62,11 +62,7 @@ function RequestCard({ r, lang }: { r: ElectiveRequest; lang: string }) {
       qc.invalidateQueries({ queryKey: ['elective-requests'] })
     } catch (e: any) { setErr(tError(e.response?.data?.detail, 'subjForm.failed')) } finally { setBusy('') }
   }
-  const reopen = async () => {
-    if (!r.student || !confirm(t('el.reopenAsk', { name: r.student.name }))) return
-    setBusy('reopen')
-    try { await electivesApi.reopen(r.student.user_id) } finally { setBusy('') }
-  }
+
   const pending = r.status === 'pending'
   return (
     <li className={`card p-4 sm:p-5 border-2 ${pending ? 'border-ink' : ''}`}>
@@ -76,17 +72,27 @@ function RequestCard({ r, lang }: { r: ElectiveRequest; lang: string }) {
         <p className="ml-auto text-[12px] text-ink-muted">{formatDateTime(r.created_at, lang as any)}</p>
       </div>
       <div className="mt-3 grid sm:grid-cols-[1fr_auto_1fr] gap-2 items-center">
-        <div className="rounded-lg bg-bad-soft/60 px-3 py-2">
-          <p className="text-[11.5px] font-bold text-bad">{t('el.out')}</p>
-          <p className="font-semibold text-[14px]">{r.remove.name}</p>
-          <p className="text-[12px] text-ink-muted font-mono">{r.remove.code} · {t('subj.semShort', { n: r.remove.semester })}</p>
-        </div>
+        {r.remove && !r.move ? (
+          <div className="rounded-lg bg-bad-soft/60 px-3 py-2">
+            <p className="text-[11.5px] font-bold text-bad">{t('el.out')}</p>
+            <p className="font-semibold text-[14px]">{r.remove.name}</p>
+            <p className="text-[12px] text-ink-muted font-mono">{r.remove.code} · {t('subj.semShort', { n: r.remove.semester })}</p>
+          </div>
+        ) : r.move && r.remove ? (
+          <div className="rounded-lg bg-paper px-3 py-2">
+            <p className="text-[11.5px] font-bold text-ink-muted">{t('el.nowIn')}</p>
+            <p className="font-semibold text-[14px]">{r.remove.name}</p>
+            <p className="text-[12px] text-ink-muted font-mono">{r.remove.code} · {t('subj.semShort', { n: r.remove.semester })}</p>
+          </div>
+        ) : <div className="rounded-lg border border-dashed border-line px-3 py-2 text-[12.5px] text-ink-muted">{t('el.nothingOut')}</div>}
         <ArrowLeftRight size={16} className="hidden sm:block text-ink-faint" aria-hidden />
-        <div className="rounded-lg bg-ok-soft/60 px-3 py-2">
-          <p className="text-[11.5px] font-bold text-ok">{r.move ? t('el.moveTo') : t('el.in')}</p>
-          <p className="font-semibold text-[14px]">{r.add.name}</p>
-          <p className="text-[12px] text-ink-muted font-mono">{r.add.code} · {t('subj.semShort', { n: r.add.semester })}</p>
-        </div>
+        {r.add ? (
+          <div className="rounded-lg bg-ok-soft/60 px-3 py-2">
+            <p className="text-[11.5px] font-bold text-ok">{r.move ? t('el.moveTo') : t('el.in')}</p>
+            <p className="font-semibold text-[14px]">{r.add.name}</p>
+            <p className="text-[12px] text-ink-muted font-mono">{r.add.code} · {t('subj.semShort', { n: r.add.semester })}</p>
+          </div>
+        ) : <div className="rounded-lg border border-dashed border-line px-3 py-2 text-[12.5px] text-ink-muted">{t('el.nothingIn')}</div>}
       </div>
       {r.reason && <p className="mt-3 text-[13px] border-l-2 border-marker pl-2"><span className="text-ink-muted">{t('el.reason')}:</span> {r.reason}</p>}
       {pending ? (
@@ -105,11 +111,6 @@ function RequestCard({ r, lang }: { r: ElectiveRequest; lang: string }) {
           {t(`el.status.${r.status}` as any)}{r.decided_at ? ` · ${formatDateTime(r.decided_at, lang as any)}` : ''}{r.admin_note ? ` — „${r.admin_note}“` : ''}
         </p>
       )}
-      <div className="mt-2 flex">
-        <button className="ml-auto text-[12px] text-ink-muted hover:text-ink inline-flex items-center gap-1" onClick={reopen} disabled={!!busy}>
-          <RotateCcw size={12} /> {t('el.reopen')}
-        </button>
-      </div>
       {err && <p role="alert" className="mt-2 text-[13px] text-bad">{err}</p>}
     </li>
   )

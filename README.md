@@ -154,11 +154,11 @@ business, pedagogy, networks theory…) were removed by the migration `20261104_
 already had tasks or courses, so nothing anyone made is lost.
 
 **Electives.** Each student puts electives into their own semesters (*Subjects*): with the semester on the card,
-with "Add an elective" in a semester, or by dragging the card onto a semester. They choose freely once and then
-*Confirm*; after that a change is a **request to the admin** that always has both parts — one elective out and one
-in (or the same one into another semester). Whichever part the student starts with, the dialog asks for the other;
-*Send the request* / *Cancel*. The admin approves or rejects it in *Administration → Elective requests* (and can let
-a student choose freely again).
+with "Add an elective" in a semester, or by dragging the card onto a semester. **Every change is a request to the
+admin** — add an elective, take one out, move one to another semester (or one out and another in): the dialog shows
+what is asked, takes an optional reason, *Send the request* / *Cancel*. Nothing changes until the admin approves it in
+*Administration → Elective requests*; the student sees their waiting requests (and can cancel them) and the last
+decision. Approving puts the student into (or out of) the subject's space.
 
 **Staff and the students' practice.** The professor, assistants and лаборанти of a course of a subject see
 everything in it, and also what the students practise there with their own AI key (the subject page → *Students'

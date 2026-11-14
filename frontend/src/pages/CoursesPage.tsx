@@ -2,11 +2,11 @@ import { useMemo, useState } from 'react'
 import { permLabel } from '../components/PermissionsEditor'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeftRight, ArrowRight, CalendarClock, ChevronRight, GraduationCap, Lock, Plus, Search, Send, Sparkles, Users, X } from 'lucide-react'
+import { ArrowLeftRight, ArrowRight, CalendarClock, ChevronRight, GraduationCap, Lock, Plus, Search, Send, Sparkles, Users, X, Loader2 } from 'lucide-react'
 import { coursesApi, electivesApi, sessionsApi, subjectsApi } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { useLanguage } from '../i18n/LanguageContext'
-import { Course, ElectivePlan, SubjectSummary } from '../types'
+import { Course, ElectivePlan, ElectiveRequest, SubjectSummary } from '../types'
 import { relative, formatDateTime } from '../lib/time'
 import AppHeader from '../components/AppHeader'
 import SubjectIcon from '../components/SubjectIcon'
@@ -26,8 +26,8 @@ const SEMS = ['1', '2', '3', '4', '5', '6', '7', '8']
  * Home ("Предмети"): the person's access card and console (where they stopped, their courses), then the whole
  * FINKI catalogue along the eight semesters of the studies. Courses and the people in them are set by the admin, who
  * also adds new subjects to the catalogue. A student puts electives into their own semesters (the card's semester,
- * "Add an elective", or drag and drop): freely until they confirm the choice, then only through a request to the
- * admin — one elective out and one in, together.
+ * "Add an elective", or drag and drop) — every change (add, take out, move) is a request the admin approves; nothing
+ * changes until then.
  */
 export default function CoursesPage() {
   const { user } = useAuth()
@@ -50,7 +50,7 @@ export default function CoursesPage() {
   const current: Mode = mode ?? (mineIds.size || chosen.size ? 'mine' : 'tasks')
   const [q, setQ] = useState('')
   const [picker, setPicker] = useState<string | null>(null)      // semester to add an elective to
-  const [change, setChange] = useState<Change | null>(null)      // a change after the choice was confirmed
+  const [change, setChange] = useState<Change | null>(null)      // the request about to be sent
   const [newSubject, setNewSubject] = useState(false)
   const [dragging, setDragging] = useState<string | null>(null)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
@@ -70,33 +70,23 @@ export default function CoursesPage() {
     qc.invalidateQueries({ queryKey: ['subjects'] })
   }
   const fail = (er: any) => setMsg({ ok: false, text: tError(er.response?.data?.detail, 'subjForm.failed') })
-  const blocked = () => { if (plan?.pending) { setMsg({ ok: false, text: t('el.pendingBlocks') }); return true } return false }
+  const pendingFor = (id: string) => (plan?.pending_requests ?? []).find((r) => r.add?.subject_id === id || r.remove?.subject_id === id)
+  const busy = (id: string) => { if (pendingFor(id)) { setMsg({ ok: false, text: t('el.alreadyWaiting', { name: name(id) }) }); return true } return false }
 
-  /** Put an elective into one of my semesters (or move it there). After the choice is confirmed: a request. */
-  const addTo = async (id: string, semester: number) => {
+  /** Put an elective into one of my semesters (or move it there): a request to the admin. */
+  const addTo = (id: string, semester: number) => {
     setMsg(null)
-    if (!student) return
-    if (plan?.confirmed) {
-      if (blocked()) return
-      const was = chosen.get(id)
-      if (was === semester) return
-      setChange(was != null ? { remove: id, add: id, semester } : { add: id, semester })
-      return
-    }
-    try { refresh(await electivesApi.choose(id, semester)); setMsg({ ok: true, text: t('home.moved', { name: name(id), n: semester }) }) } catch (er) { fail(er) }
+    if (!student || busy(id)) return
+    const was = chosen.get(id)
+    if (was === semester) return
+    setChange(was != null ? { remove: id, add: id, semester } : { add: id, semester })
   }
-  const removeChoice = async (id: string) => {
+  const removeChoice = (id: string) => {
     setMsg(null)
-    if (plan?.confirmed) { if (!blocked()) setChange({ remove: id }); return }
-    try { refresh(await electivesApi.drop(id)); setMsg({ ok: true, text: t('el.removed', { name: name(id) }) }) } catch (er) { fail(er) }
+    if (!busy(id)) setChange({ remove: id })
   }
-  const confirmPlan = async () => {
-    if (!confirm(t('el.confirmAsk'))) return
-    try { refresh(await electivesApi.confirm()); setMsg({ ok: true, text: t('el.confirmed') }) } catch (er) { fail(er) }
-  }
-  const cancelRequest = async () => {
-    if (!plan?.pending) return
-    try { await electivesApi.cancel(plan.pending.id); refresh() } catch (er) { fail(er) }
+  const cancelRequest = async (id: string) => {
+    try { await electivesApi.cancel(id); refresh() } catch (er) { fail(er) }
   }
 
   const roleLabel = user ? t(`role.${user.role}` as any) : ''
@@ -233,7 +223,7 @@ export default function CoursesPage() {
                 )
               })}
             </ol>
-            {student && <p className="mt-4 text-[12px] text-ink-muted">{t(plan?.confirmed ? 'el.dragHintLocked' : 'el.dragHint')}</p>}
+            {student && <p className="mt-4 text-[12px] text-ink-muted">{t('el.dragHintRequest')}</p>}
             {msg && <p role="status" className={`mt-2 text-[13px] font-semibold ${msg.ok ? 'text-ok' : 'text-bad'}`}>{msg.text}</p>}
           </div>
 
@@ -272,8 +262,8 @@ export default function CoursesPage() {
       {newSubject && <SubjectForm subject={null} onClose={() => setNewSubject(false)} />}
       {picker && <ElectivePicker semester={picker} subjects={subjects} taken={chosen}
         onPick={(id) => { setPicker(null); addTo(id, Number(picker)) }} onClose={() => setPicker(null)} />}
-      {change && <ChangeDialog initial={change} subjects={subjects} chosen={chosen}
-        onDone={() => { setChange(null); refresh(); setMsg({ ok: true, text: t('el.requestSent') }) }} onClose={() => setChange(null)} />}
+      {change && <RequestDialog change={change} name={name} from={change.remove ? chosen.get(change.remove) : undefined}
+        onDone={(p) => { setChange(null); refresh(p); setMsg({ ok: true, text: t('el.requestSent') }) }} onClose={() => setChange(null)} />}
     </div>
   )
 
@@ -307,31 +297,35 @@ export default function CoursesPage() {
 
   function PlanBar() {
     const p = plan!
+    const pend = p.pending_requests ?? []
+    const last = p.requests.find((r) => r.status === 'approved' || r.status === 'rejected')
     return (
-      <div className={`mt-6 rounded-xl border-2 px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2 ${p.confirmed ? 'border-line bg-surface' : 'border-ink bg-marker-soft/60'}`}>
-        <span className="inline-flex items-center gap-2 font-bold text-[14px]">
-          {p.confirmed ? <Lock size={15} /> : <Sparkles size={15} />}
-          {p.confirmed ? t('el.lockedTitle', { n: p.choices.length }) : t('el.choosingTitle', { n: p.choices.length })}
-        </span>
-        <span className="text-[13px] text-ink-muted flex-1 min-w-[14rem]">{p.confirmed ? t('el.lockedHint') : t('el.choosingHint')}</span>
-        {!p.confirmed && <button className="btn-primary btn-sm" disabled={p.choices.length === 0} onClick={confirmPlan}>{t('el.confirm')}</button>}
-        {p.pending && (
-          <div className="basis-full rounded-lg bg-ink text-white px-3 py-2.5 text-[13px] flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <span className="font-bold text-marker">{t('el.pendingTitle')}</span>
-            <span><span className="text-white/60">{t('el.out')}:</span> {p.pending.remove.name} ({t('subj.semShort', { n: p.pending.remove.semester })})</span>
-            <ArrowLeftRight size={14} className="text-white/50" />
-            <span><span className="text-white/60">{t('el.in')}:</span> {p.pending.add.name} ({t('subj.semShort', { n: p.pending.add.semester })})</span>
-            <button className="ml-auto text-[12.5px] underline text-white/80 hover:text-white" onClick={cancelRequest}>{t('el.cancelRequest')}</button>
-          </div>
+      <div className="mt-6 rounded-xl border-2 border-line bg-surface px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <span className="inline-flex items-center gap-2 font-bold text-[14px]"><Sparkles size={15} /> {t('el.mineTitle', { n: p.choices.length })}</span>
+        <span className="text-[13px] text-ink-muted flex-1 min-w-[14rem]">{t('el.requestHint')}</span>
+        {pend.length > 0 && (
+          <ul className="basis-full rounded-lg bg-ink text-white px-3 py-2 text-[13px] divide-y divide-white/10">
+            <li className="pb-1.5 font-bold text-marker">{t('el.pendingN', { n: pend.length })}</li>
+            {pend.map((r) => (
+              <li key={r.id} className="py-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span>{describe(r)}</span>
+                <button className="ml-auto text-[12.5px] underline text-white/80 hover:text-white" onClick={() => cancelRequest(r.id)}>{t('el.cancelRequest')}</button>
+              </li>
+            ))}
+          </ul>
         )}
-        {!p.pending && p.requests[0] && p.requests[0].status !== 'cancelled' && p.requests[0].decided_at && (
-          <p className={`basis-full text-[12.5px] ${p.requests[0].status === 'approved' ? 'text-ok' : 'text-bad'}`}>
-            {t(p.requests[0].status === 'approved' ? 'el.lastApproved' : 'el.lastRejected', { out: p.requests[0].remove.name, in: p.requests[0].add.name })}
-            {p.requests[0].admin_note && <> — „{p.requests[0].admin_note}“</>}
+        {last && last.decided_at && (
+          <p className={`basis-full text-[12.5px] ${last.status === 'approved' ? 'text-ok' : 'text-bad'}`}>
+            {t(last.status === 'approved' ? 'el.lastApprovedX' : 'el.lastRejectedX', { what: describe(last) })}
+            {last.admin_note && <> — „{last.admin_note}“</>}
           </p>
         )}
       </div>
     )
+  }
+
+  function describe(r: ElectiveRequest) {
+    return describeRequest(r, t)
   }
 
   function SubjectCard({ s }: { s: SubjectSummary }) {
@@ -455,94 +449,46 @@ function ElectivePicker({ semester, subjects, taken, onPick, onClose }: { semest
   )
 }
 
-/**
- * After the choice is confirmed, a change is a request: one elective OUT and one IN (the same one = another
- * semester). Whichever the student started with, the dialog asks for the other part; the request can be sent only
- * with both. "Cancel" drops it.
- */
-function ChangeDialog({ initial, subjects, chosen, onDone, onClose }: {
-  initial: Change; subjects: SubjectSummary[]; chosen: Map<string, number>; onDone: () => void; onClose: () => void
+/** What a request asks for, in a few words: "Add: X (sem. 5)", "Take out: X", "Move: X → sem. 6", "X → Y". */
+export function describeRequest(r: ElectiveRequest, t: ReturnType<typeof useLanguage>['t']) {
+  const sem = (n?: number | null) => (n ? t('subj.semShort', { n }) : '')
+  if (r.add && r.remove && r.add.subject_id === r.remove.subject_id) return t('el.reqMove', { name: r.add.name, from: sem(r.remove.semester), to: sem(r.add.semester) })
+  if (r.add && r.remove) return t('el.reqSwap', { out: r.remove.name, in: r.add.name, sem: sem(r.add.semester) })
+  if (r.add) return t('el.reqAdd', { name: r.add.name, sem: sem(r.add.semester) })
+  return t('el.reqRemove', { name: r.remove?.name ?? '', sem: sem(r.remove?.semester) })
+}
+
+/** A change of my electives is a request to the admin: what it asks for, an optional reason, "Send the request" or
+ *  "Cancel". */
+function RequestDialog({ change, name, from, onDone, onClose }: {
+  change: Change; name: (id: string) => string; from?: number; onDone: (p: ElectivePlan) => void; onClose: () => void
 }) {
   const { t, tError } = useLanguage()
-  const [out, setOut] = useState<string | undefined>(initial.remove)
-  const [inn, setInn] = useState<string | undefined>(initial.add)
-  const [sem, setSem] = useState<number>(initial.semester ?? (initial.remove ? chosen.get(initial.remove)! : 1))
-  const [q, setQ] = useState('')
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  const sub = (id?: string) => subjects.find((s) => s.id === id)
-  const mine = subjects.filter((s) => chosen.has(s.id))
-  const candidates = subjects.filter((s) => s.elective && !chosen.has(s.id) &&
-    (!q.trim() || `${s.name} ${s.finki_code ?? ''}`.toLowerCase().includes(q.trim().toLowerCase())))
-  const move = out && inn && out === inn
-  const ready = !!out && !!inn && !(move && chosen.get(out!) === sem)
+  const id = (change.add ?? change.remove)!
+  const what = change.add && change.remove ? t('el.reqMove', { name: name(id), from: t('subj.semShort', { n: from ?? 0 }), to: t('subj.semShort', { n: change.semester! }) })
+    : change.add ? t('el.reqAdd', { name: name(id), sem: t('subj.semShort', { n: change.semester! }) })
+    : t('el.reqRemove', { name: name(id), sem: from ? t('subj.semShort', { n: from }) : '' })
   const send = async () => {
     setBusy(true); setErr('')
-    try { await electivesApi.request({ remove_subject_id: out!, add_subject_id: inn!, add_semester: sem, reason }); onDone() }
-    catch (e: any) { setErr(tError(e.response?.data?.detail, 'subjForm.failed')) }
-    finally { setBusy(false) }
+    try {
+      onDone(change.add ? await electivesApi.choose(change.add, change.semester!, reason) : await electivesApi.drop(change.remove!, reason))
+    } catch (er: any) { setErr(tError(er.response?.data?.detail, 'subjForm.failed')); setBusy(false) }
   }
   return (
-    <Modal title={t('el.changeTitle')} onClose={onClose} wide>
-      <p className="mt-1 text-[13px] text-ink-muted">{t('el.changeHint')}</p>
-      <div className="mt-4 grid sm:grid-cols-[1fr_auto_1fr] gap-3 items-start">
-        {/* OUT */}
-        <section className={`rounded-xl border-2 p-3 ${out ? 'border-ink' : 'border-dashed border-marker-deep bg-marker-soft/40'}`} aria-label={t('el.out')}>
-          <p className="text-[12px] font-bold text-ink-muted">{t('el.out')}</p>
-          {out ? (
-            <div className="mt-1.5 flex items-start gap-2">
-              <span className="min-w-0 flex-1"><span className="block font-bold text-[14px]">{sub(out)?.name}</span>
-                <span className="text-[12px] text-ink-muted">{t('el.fromMySem', { n: chosen.get(out) ?? '' })}</span></span>
-              {!initial.remove && <button className="text-[12px] underline text-ink-muted" onClick={() => setOut(undefined)}>{t('el.changePick')}</button>}
-            </div>
-          ) : (
-            <>
-              <p className="mt-1 text-[13px] font-semibold">{t('el.pickOut')}</p>
-              <ul className="mt-2 max-h-56 overflow-y-auto divide-y divide-line-soft">
-                {mine.map((s) => <SubjectPick key={s.id} s={s} note={t('el.inMySem', { n: chosen.get(s.id)! })} onClick={() => { setOut(s.id); if (!inn) setSem(chosen.get(s.id)!) }} />)}
-              </ul>
-            </>
-          )}
-        </section>
-        <ArrowLeftRight className="hidden sm:block mt-10 text-ink-faint" size={18} aria-hidden />
-        {/* IN */}
-        <section className={`rounded-xl border-2 p-3 ${inn ? 'border-ink' : 'border-dashed border-marker-deep bg-marker-soft/40'}`} aria-label={t('el.in')}>
-          <p className="text-[12px] font-bold text-ink-muted">{t('el.in')}</p>
-          {inn ? (
-            <div className="mt-1.5 flex items-start gap-2">
-              <span className="min-w-0 flex-1 font-bold text-[14px]">{sub(inn)?.name}</span>
-              {!initial.add && <button className="text-[12px] underline text-ink-muted" onClick={() => setInn(undefined)}>{t('el.changePick')}</button>}
-            </div>
-          ) : (
-            <>
-              <p className="mt-1 text-[13px] font-semibold">{t('el.pickIn')}</p>
-              <label className="relative mt-2 block">
-                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint" />
-                <input className="input h-9 pl-8 text-[13px]" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('home.search')} aria-label={t('home.search')} />
-              </label>
-              <ul className="mt-2 max-h-48 overflow-y-auto divide-y divide-line-soft">
-                {candidates.slice(0, 60).map((s) => <SubjectPick key={s.id} s={s} onClick={() => { setInn(s.id); if (!initial.semester && s.semester && !out) setSem(s.semester) }} />)}
-              </ul>
-            </>
-          )}
-          <label className="mt-3 flex items-center gap-2 text-[13px]">
-            <span className="text-ink-muted">{t('el.toSemester')}</span>
-            <select className="input h-8 w-auto py-0 text-[13px] font-bold" value={sem} onChange={(e) => setSem(Number(e.target.value))}>
-              {SEMS.map((n) => <option key={n} value={n}>{n}.</option>)}
-            </select>
-          </label>
-        </section>
-      </div>
-      <label className="mt-4 block">
-        <span className="field-label">{t('el.reason')}</span>
-        <textarea rows={2} maxLength={1000} className="input h-auto py-2 text-[13px]" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t('el.reasonPh')} />
+    <Modal title={t('el.requestTitle')} onClose={onClose}>
+      <p className="mt-3 rounded-lg bg-marker-soft/60 border border-ink/10 px-3 py-2.5 font-semibold text-[14px]">{what}</p>
+      <p className="mt-2 text-[13px] text-ink-muted">{t('el.requestExplain')}</p>
+      <label className="mt-3 block">
+        <span className="field-label">{t('el.reasonOptional')}</span>
+        <textarea className="input min-h-[4.5rem]" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={1000} />
       </label>
-      {!ready && <p className="mt-2 text-[12.5px] text-marker-deep font-semibold">{!out ? t('el.needOut') : !inn ? t('el.needIn') : t('el.nothingChanges')}</p>}
       {err && <p role="alert" className="mt-2 text-[13px] text-bad">{err}</p>}
-      <div className="mt-4 flex flex-wrap gap-2 justify-end">
-        <button className="btn-ghost" onClick={onClose}>{t('el.cancel')}</button>
-        <button className="btn-primary" disabled={!ready || busy} onClick={send}><Send size={15} /> {t('el.sendRequest')}</button>
+      <div className="mt-4 flex justify-end gap-2">
+        <button className="btn-secondary" onClick={onClose}>{t('el.giveUp')}</button>
+        <button className="btn-primary" disabled={busy} onClick={send}>{busy ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} {t('el.sendRequest')}</button>
       </div>
     </Modal>
   )
